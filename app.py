@@ -1,7 +1,11 @@
 import streamlit as st
 from deep_translator import GoogleTranslator
 from gtts import gTTS
+import langid
 import base64
+import pyperclip
+from streamlit_mic_recorder import mic_recorder
+
 
 # Page Configuration
 st.set_page_config(
@@ -9,6 +13,7 @@ st.set_page_config(
     page_icon="🌍",
     layout="centered"
 )
+
 
 # Session State
 if "history" not in st.session_state:
@@ -20,9 +25,13 @@ if "translated" not in st.session_state:
 if "selected_lang_code" not in st.session_state:
     st.session_state.selected_lang_code = ""
 
+if "detected_language" not in st.session_state:
+    st.session_state.detected_language = ""
+
 
 # Title
 st.title("🌍 LinguaLive")
+
 
 # Sidebar
 with st.sidebar:
@@ -45,15 +54,48 @@ with st.sidebar:
 
 
 # Description
-st.write("Real-time Multilingual Communication Assistant")
+st.write(
+    "Real-time Multilingual Communication Assistant"
+)
 
 st.markdown("---")
 
 
-# User Input
+# Text Input
 user_text = st.text_input(
     "Enter your text:"
 )
+
+
+# Voice Input
+st.markdown("### 🎤 Voice Input")
+
+voice_data = mic_recorder(
+    start_prompt="Start Recording",
+    stop_prompt="Stop Recording",
+    key="recorder"
+)
+
+
+# Voice Status
+if voice_data:
+
+    try:
+
+        st.success(
+            "Voice recorded successfully 🎤"
+        )
+
+        st.info(
+            "Speech-to-text processing coming next"
+        )
+
+    except Exception as e:
+
+        st.error(
+            f"Speech Error: {str(e)}"
+        )
+
 
 # Languages
 languages = {
@@ -63,26 +105,75 @@ languages = {
     "French": "fr"
 }
 
+
 selected_language = st.selectbox(
     "Choose Target Language:",
     list(languages.keys())
 )
 
 
-# Translate Button
+# Translate
 if st.button("Translate"):
 
     if user_text.strip() == "":
-        st.warning("Please enter some text.")
+
+        st.warning(
+            "Please enter some text."
+        )
 
     else:
 
-        with st.spinner("Translating..."):
+        with st.spinner(
+            "Translating..."
+        ):
 
             translated = GoogleTranslator(
                 source="auto",
                 target=languages[selected_language]
-            ).translate(user_text)
+            ).translate(
+                user_text
+            )
+
+        # Language Detection
+        try:
+
+            detected_language_code, _ = (
+                langid.classify(
+                    user_text
+                )
+            )
+
+            language_names = {
+
+                "en": "English",
+                "ta": "Tamil",
+                "hi": "Hindi",
+                "es": "Spanish",
+                "fr": "French",
+                "de": "German",
+                "it": "Italian",
+                "pt": "Portuguese",
+                "nl": "Dutch",
+                "ru": "Russian",
+                "ja": "Japanese",
+                "ko": "Korean",
+                "ar": "Arabic"
+
+            }
+
+            st.session_state.detected_language = (
+                language_names.get(
+                    detected_language_code,
+                    detected_language_code.upper()
+                )
+            )
+
+        except:
+
+            st.session_state.detected_language = (
+                "Unknown"
+            )
+
 
         st.session_state.translated = translated
 
@@ -98,16 +189,24 @@ if st.button("Translate"):
         })
 
 
-# Translation Display
+# Translation Output
 if st.session_state.translated:
 
-    # Generate audio
+    st.markdown(
+        f"🌐 **Detected Language:** "
+        f"{st.session_state.detected_language}"
+    )
+
+
+    # Audio generation
     tts = gTTS(
         text=st.session_state.translated,
         lang=st.session_state.selected_lang_code
     )
 
-    tts.save("translation.mp3")
+    tts.save(
+        "translation.mp3"
+    )
 
     with open(
         "translation.mp3",
@@ -120,13 +219,18 @@ if st.session_state.translated:
         audio_bytes
     ).decode()
 
-    col1, col2, col3 = st.columns([8,1.5,1.5])
+
+    col1, col2, col3, col4 = st.columns(
+        [8, 1.5, 1.5, 1.5]
+    )
+
 
     with col1:
 
         st.success(
             st.session_state.translated
         )
+
 
     with col2:
 
@@ -144,6 +248,7 @@ if st.session_state.translated:
                 unsafe_allow_html=True
             )
 
+
     with col3:
 
         st.download_button(
@@ -153,6 +258,22 @@ if st.session_state.translated:
             mime="audio/mp3",
             use_container_width=True
         )
+
+
+    with col4:
+
+        if st.button(
+            "📋",
+            use_container_width=True
+        ):
+
+            pyperclip.copy(
+                st.session_state.translated
+            )
+
+            st.toast(
+                "Copied ✅"
+            )
 
 
 # Translation History
@@ -186,8 +307,8 @@ if st.button(
 ):
 
     st.session_state.history = []
-
     st.session_state.translated = ""
+    st.session_state.detected_language = ""
 
     st.rerun()
 
