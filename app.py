@@ -32,7 +32,6 @@ if "detected_language" not in st.session_state:
 # Title
 st.title("🌍 LinguaLive")
 
-
 # Sidebar
 with st.sidebar:
 
@@ -47,10 +46,28 @@ with st.sidebar:
 
     st.subheader("Supported Languages")
 
-    st.write("• Tamil")
-    st.write("• Hindi")
-    st.write("• Spanish")
-    st.write("• French")
+    supported_languages = [
+
+        "Tamil",
+        "Hindi",
+        "Spanish",
+        "French",
+        "English",
+        "German",
+        "Italian",
+        "Japanese",
+        "Korean",
+        "Arabic",
+        "Portuguese",
+        "Russian"
+
+    ]
+
+    for lang in supported_languages:
+
+        st.write(
+            f"• {lang}"
+        )
 
 
 # Description
@@ -61,7 +78,7 @@ st.write(
 st.markdown("---")
 
 
-# Text Input
+# User Input
 user_text = st.text_input(
     "Enter your text:"
 )
@@ -76,33 +93,33 @@ voice_data = mic_recorder(
     key="recorder"
 )
 
-
-# Voice Status
 if voice_data:
 
-    try:
+    st.success(
+        "Voice recorded successfully 🎤"
+    )
 
-        st.success(
-            "Voice recorded successfully 🎤"
-        )
-
-        st.info(
-            "Speech-to-text processing coming next"
-        )
-
-    except Exception as e:
-
-        st.error(
-            f"Speech Error: {str(e)}"
-        )
+    st.info(
+        "Speech-to-text processing coming next"
+    )
 
 
-# Languages
+# Language Options
 languages = {
+
     "Tamil": "ta",
     "Hindi": "hi",
     "Spanish": "es",
-    "French": "fr"
+    "French": "fr",
+    "English": "en",
+    "German": "de",
+    "Italian": "it",
+    "Japanese": "ja",
+    "Korean": "ko",
+    "Arabic": "ar",
+    "Portuguese": "pt",
+    "Russian": "ru"
+
 }
 
 
@@ -112,7 +129,7 @@ selected_language = st.selectbox(
 )
 
 
-# Translate
+# Translate Button
 if st.button("Translate"):
 
     if user_text.strip() == "":
@@ -153,7 +170,6 @@ if st.button("Translate"):
                 "de": "German",
                 "it": "Italian",
                 "pt": "Portuguese",
-                "nl": "Dutch",
                 "ru": "Russian",
                 "ja": "Japanese",
                 "ko": "Korean",
@@ -174,7 +190,6 @@ if st.button("Translate"):
                 "Unknown"
             )
 
-
         st.session_state.translated = translated
 
         st.session_state.selected_lang_code = (
@@ -186,10 +201,11 @@ if st.button("Translate"):
             "original": user_text,
             "translated": translated,
             "language": selected_language
+
         })
 
 
-# Translation Output
+# Translation Result
 if st.session_state.translated:
 
     st.markdown(
@@ -197,8 +213,7 @@ if st.session_state.translated:
         f"{st.session_state.detected_language}"
     )
 
-
-    # Audio generation
+    # Audio Generation
     tts = gTTS(
         text=st.session_state.translated,
         lang=st.session_state.selected_lang_code
@@ -215,22 +230,21 @@ if st.session_state.translated:
 
         audio_bytes = f.read()
 
-    audio_base64 = base64.b64encode(
-        audio_bytes
-    ).decode()
-
-
-    col1, col2, col3, col4 = st.columns(
-        [8, 1.5, 1.5, 1.5]
+    audio_base64 = (
+        base64.b64encode(
+            audio_bytes
+        ).decode()
     )
 
+    col1, col2, col3, col4 = st.columns(
+        [8,1.5,1.5,1.5]
+    )
 
     with col1:
 
         st.success(
             st.session_state.translated
         )
-
 
     with col2:
 
@@ -242,12 +256,11 @@ if st.session_state.translated:
             st.markdown(
                 f"""
                 <audio autoplay>
-                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
                 </audio>
                 """,
                 unsafe_allow_html=True
             )
-
 
     with col3:
 
@@ -258,7 +271,6 @@ if st.session_state.translated:
             mime="audio/mp3",
             use_container_width=True
         )
-
 
     with col4:
 
@@ -294,8 +306,7 @@ if st.session_state.history:
         )
 
         st.write(
-            f"Translated ({item['language']}): "
-            f"{item['translated']}"
+            f"Translated ({item['language']}): {item['translated']}"
         )
 
         st.markdown("---")
