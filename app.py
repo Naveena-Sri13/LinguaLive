@@ -5,6 +5,7 @@ import langid
 import base64
 import pyperclip
 from streamlit_mic_recorder import mic_recorder
+from datetime import datetime
 
 
 # Page Configuration
@@ -31,6 +32,7 @@ if "detected_language" not in st.session_state:
 
 # Title
 st.title("🌍 LinguaLive")
+
 
 # Sidebar
 with st.sidebar:
@@ -85,7 +87,9 @@ user_text = st.text_input(
 
 
 # Voice Input
-st.markdown("### 🎤 Voice Input")
+st.markdown(
+    "### 🎤 Voice Input"
+)
 
 voice_data = mic_recorder(
     start_prompt="Start Recording",
@@ -104,7 +108,7 @@ if voice_data:
     )
 
 
-# Language Options
+# Languages
 languages = {
 
     "Tamil": "ta",
@@ -130,7 +134,9 @@ selected_language = st.selectbox(
 
 
 # Translate Button
-if st.button("Translate"):
+if st.button(
+    "Translate"
+):
 
     if user_text.strip() == "":
 
@@ -144,12 +150,22 @@ if st.button("Translate"):
             "Translating..."
         ):
 
-            translated = GoogleTranslator(
-                source="auto",
-                target=languages[selected_language]
-            ).translate(
-                user_text
-            )
+            try:
+
+                translated = GoogleTranslator(
+                    source="auto",
+                    target=languages[selected_language]
+                ).translate(
+                    user_text
+                )
+
+            except Exception:
+
+                st.error(
+                    "Translation service unavailable. Please try again."
+                )
+
+                st.stop()
 
         # Language Detection
         try:
@@ -190,22 +206,28 @@ if st.button("Translate"):
                 "Unknown"
             )
 
+
         st.session_state.translated = translated
 
         st.session_state.selected_lang_code = (
             languages[selected_language]
         )
 
+
+        # History storage
         st.session_state.history.append({
 
             "original": user_text,
             "translated": translated,
-            "language": selected_language
+            "language": selected_language,
+            "time": datetime.now().strftime(
+                "%H:%M:%S"
+            )
 
         })
 
 
-# Translation Result
+# Translation Output
 if st.session_state.translated:
 
     st.markdown(
@@ -213,7 +235,8 @@ if st.session_state.translated:
         f"{st.session_state.detected_language}"
     )
 
-    # Audio Generation
+
+    # Audio generation
     tts = gTTS(
         text=st.session_state.translated,
         lang=st.session_state.selected_lang_code
@@ -223,6 +246,7 @@ if st.session_state.translated:
         "translation.mp3"
     )
 
+
     with open(
         "translation.mp3",
         "rb"
@@ -230,21 +254,23 @@ if st.session_state.translated:
 
         audio_bytes = f.read()
 
-    audio_base64 = (
-        base64.b64encode(
-            audio_bytes
-        ).decode()
-    )
+
+    audio_base64 = base64.b64encode(
+        audio_bytes
+    ).decode()
+
 
     col1, col2, col3, col4 = st.columns(
         [8,1.5,1.5,1.5]
     )
+
 
     with col1:
 
         st.success(
             st.session_state.translated
         )
+
 
     with col2:
 
@@ -262,6 +288,7 @@ if st.session_state.translated:
                 unsafe_allow_html=True
             )
 
+
     with col3:
 
         st.download_button(
@@ -271,6 +298,7 @@ if st.session_state.translated:
             mime="audio/mp3",
             use_container_width=True
         )
+
 
     with col4:
 
@@ -294,22 +322,49 @@ if st.session_state.history:
     st.markdown("---")
 
     st.subheader(
-        "Translation History"
+        "📜 Translation History"
     )
 
-    for item in reversed(
-        st.session_state.history
+    for index, item in enumerate(
+        reversed(st.session_state.history)
     ):
 
-        st.write(
-            f"Original: {item['original']}"
+        col1, col2 = st.columns(
+            [10,1]
         )
 
-        st.write(
-            f"Translated ({item['language']}): {item['translated']}"
-        )
+        with col1:
 
-        st.markdown("---")
+            st.info(
+                f"""
+Original: {item['original']}
+
+Language: {item['language']}
+
+Translation: {item['translated']}
+
+Time: {item['time']}
+                """
+            )
+
+        with col2:
+
+            if st.button(
+                "🗑️",
+                key=f"delete_{index}"
+            ):
+
+                actual_index = (
+                    len(st.session_state.history)
+                    -1
+                    -index
+                )
+
+                st.session_state.history.pop(
+                    actual_index
+                )
+
+                st.rerun()
 
 
 # Clear History
