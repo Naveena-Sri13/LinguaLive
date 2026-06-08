@@ -63,6 +63,15 @@ if "selected_language" not in st.session_state:
 if "voice_audio_bytes" not in st.session_state:
     st.session_state.voice_audio_bytes=None
 
+if "detected_speech_text" not in st.session_state:
+    st.session_state.detected_speech_text=""
+
+if "text_input_value" not in st.session_state:
+    st.session_state.text_input_value=""
+
+if "reuse_text" not in st.session_state:
+    st.session_state.reuse_text=""
+
 
 default_text=""
 
@@ -110,6 +119,13 @@ language_names={
 }
 
 # ---------------- SPEECH TO TEXT ----------------
+
+def use_detected_speech():
+
+    st.session_state.text_input_value=(
+        st.session_state.detected_speech_text
+    )
+
 
 def speech_to_text(audio_bytes):
 
@@ -335,11 +351,18 @@ Hearing Language: {hear_language}
 
 else:
 
+    if "reuse_text" in st.session_state and st.session_state.reuse_text!="":
+
+        st.session_state.text_input_value=(
+            st.session_state.reuse_text
+        )
+
+        st.session_state.reuse_text=""
+
+
     user_text=st.text_input(
-
         "Enter your text:",
-        value=default_text
-
+        key="text_input_value"
     )
 
     st.markdown(
@@ -365,11 +388,10 @@ else:
         st.success(
             "Voice recorded successfully 🎤"
         )
+        
+        if st.session_state.voice_audio_bytes:
 
-
-    if st.session_state.voice_audio_bytes:
-
-        if st.button(
+         if st.button(
             "🎙 Convert Speech to Text"
         ):
 
@@ -379,9 +401,7 @@ else:
 
             if speech_text:
 
-                st.success(
-                    f"Detected Speech: {speech_text}"
-                )
+                st.session_state.detected_speech_text=speech_text
 
             else:
 
@@ -390,7 +410,21 @@ else:
                 )
 
 
+    if st.session_state.detected_speech_text:
+
+        st.success(
+            f"Detected Speech: {st.session_state.detected_speech_text}"
+        )
+
+        st.button(
+    "Use Detected Speech",
+    on_click=use_detected_speech
+)
+
+
     col1,col2=st.columns([8,2])
+
+            
 
     with col1:
 
