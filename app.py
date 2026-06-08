@@ -66,8 +66,7 @@ if "detected_speech_text" not in st.session_state:
 if "text_input_value" not in st.session_state:
     st.session_state.text_input_value=""
 
-if "reuse_text" not in st.session_state:
-    st.session_state.reuse_text=""
+
 
 
 default_text=""
@@ -348,13 +347,10 @@ Hearing Language: {hear_language}
 
 else:
 
-    if "reuse_text" in st.session_state and st.session_state.reuse_text!="":
-
+    if st.session_state.detected_speech_text!="":
         st.session_state.text_input_value=(
-            st.session_state.reuse_text
-        )
-
-        st.session_state.reuse_text=""
+        st.session_state.detected_speech_text
+    )
 
 
     user_text=st.text_input(
@@ -399,6 +395,8 @@ else:
             if speech_text:
 
                 st.session_state.detected_speech_text=speech_text
+
+                st.rerun()
                 
 
             else:
@@ -414,10 +412,10 @@ else:
             f"Detected Speech: {st.session_state.detected_speech_text}"
         )
 
-        st.button(
-    "Use Detected Speech",
-    on_click=use_detected_speech
-)
+# st.button(
+#     "Insert into Text Box",
+#     on_click=use_detected_speech
+# )
 
 
     col1,col2=st.columns([8,2])
