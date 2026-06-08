@@ -31,9 +31,6 @@ AudioSegment.ffprobe = os.path.join(
 
 os.environ["PATH"] += os.pathsep + FFMPEG_PATH
 
-st.write(
-    os.path.exists(r"C:\Program Files\FFmpeg\bin\ffmpeg.exe")
-)
 
 # ---------------- PAGE CONFIG ----------------
 
@@ -402,6 +399,7 @@ else:
             if speech_text:
 
                 st.session_state.detected_speech_text=speech_text
+                
 
             else:
 
