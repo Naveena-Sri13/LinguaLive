@@ -29,7 +29,8 @@ AudioSegment.ffprobe = os.path.join(
     "ffprobe.exe"
 )
 
-os.environ["PATH"] += os.pathsep + FFMPEG_PATH
+if FFMPEG_PATH not in os.environ["PATH"]:
+    os.environ["PATH"] += os.pathsep + FFMPEG_PATH
 
 
 # ---------------- PAGE CONFIG ----------------
@@ -66,7 +67,14 @@ if "detected_speech_text" not in st.session_state:
 if "text_input_value" not in st.session_state:
     st.session_state.text_input_value=""
 
+if "live_session_active" not in st.session_state:
+    st.session_state.live_session_active=False
 
+if "session_speaking_language" not in st.session_state:
+    st.session_state.session_speaking_language=""
+
+if "session_hearing_language" not in st.session_state:
+    st.session_state.session_hearing_language=""
 
 
 default_text=""
@@ -314,15 +322,28 @@ Hear Language: {hear_language}
 
     )
 
-    if st.button(
+    if not st.session_state.live_session_active:
 
-        "🟢 Start Session",
-        use_container_width=True
+        if st.button(
 
-    ):
+            "🟢 Start Session",
+            use_container_width=True
+
+        ):
+
+            st.session_state.live_session_active=True
+
+            st.session_state.session_speaking_language=my_language
+
+            st.session_state.session_hearing_language=hear_language
+
+            st.rerun()
+
+
+    if st.session_state.live_session_active:
 
         st.success(
-            "Session Ready ✅"
+            "Session Active ✅"
         )
 
         st.markdown(
@@ -330,9 +351,9 @@ Hear Language: {hear_language}
 f"""
 🎤 Listening...
 
-Speaking Language: {my_language}
+You Speak: {st.session_state.session_speaking_language}
 
-Hearing Language: {hear_language}
+You Hear: {st.session_state.session_hearing_language}
 """
 
         )
@@ -340,6 +361,21 @@ Hearing Language: {hear_language}
         st.info(
             "Live translation engine coming next 🚀"
         )
+
+        if st.button(
+
+            "🔴 End Session",
+            use_container_width=True
+
+        ):
+
+            st.session_state.live_session_active=False
+
+            st.session_state.session_speaking_language=""
+
+            st.session_state.session_hearing_language=""
+
+            st.rerun()
 
 # ======================================================
 # TRANSLATION ASSISTANT MODE
@@ -351,13 +387,29 @@ else:
         st.session_state.text_input_value=(
         st.session_state.detected_speech_text
     )
+        
+    text_length=len(
+    st.session_state.text_input_value
+)
 
+    if text_length < 50:
+        dynamic_height = 35
 
-    user_text=st.text_input(
-        "Enter your text:",
-        key="text_input_value"
+    elif text_length < 150:
+        dynamic_height = 80
+
+    else:
+        dynamic_height = min(
+        220,
+        80 + (text_length // 20)
     )
 
+    user_text=st.text_area(
+    "Enter or edit your text:",
+    key="text_input_value",
+    height=dynamic_height
+)
+    
     st.markdown(
         "### 🎤 Voice Input"
     )
@@ -378,13 +430,19 @@ else:
             "bytes"
         ]
 
-        st.success(
-            "Voice recorded successfully 🎤"
-        )
-        
-        if st.session_state.voice_audio_bytes:
+        st.session_state.detected_speech_text=""
+        st.session_state.translated=""
+        st.session_state.detected_language=""
+        st.session_state.selected_lang_code=""
 
-         if st.button(
+        st.success(
+            "Voice recorded. Click Convert Speech to Text 🎤"
+        )
+
+
+    if st.session_state.voice_audio_bytes:
+
+        if st.button(
             "🎙 Convert Speech to Text"
         ):
 
@@ -397,12 +455,11 @@ else:
                 st.session_state.detected_speech_text=speech_text
 
                 st.rerun()
-                
 
             else:
 
                 st.warning(
-                    "Could not recognize speech"
+                    "Could not recognize speech. Try speaking closre to mic!"
                 )
 
 
@@ -412,14 +469,17 @@ else:
             f"Detected Speech: {st.session_state.detected_speech_text}"
         )
 
-# st.button(
-#     "Insert into Text Box",
-#     on_click=use_detected_speech
-# )
+        if st.button(
+            "Clear Speech"
+        ):
+
+            st.session_state.detected_speech_text=""
+            st.session_state.text_input_value=""
+
+            st.rerun()
 
 
     col1,col2=st.columns([8,2])
-
             
 
     with col1:
@@ -497,7 +557,7 @@ else:
         "Translate"
     ):
 
-        if user_text.strip()=="":
+        if st.session_state.text_input_value.strip()=="":
 
             st.warning(
                 "Please enter text"
@@ -586,7 +646,9 @@ f"🌐 Detected Language: {st.session_state.detected_language}"
 
             audio_bytes=file.read()
 
-        col1,col2,col3=st.columns(
+        
+            
+            col1,col2,col3=st.columns(
             [8,1,1]
         )
 
@@ -637,7 +699,7 @@ f"🌐 Detected Language: {st.session_state.detected_language}"
         with col1:
 
             st.subheader(
-                "🕒 Translation History"
+                "🕒 Recent Translation History"
             )
 
         with col2:
