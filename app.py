@@ -76,6 +76,20 @@ if "session_speaking_language" not in st.session_state:
 if "session_hearing_language" not in st.session_state:
     st.session_state.session_hearing_language=""
 
+if "live_talk_active" not in st.session_state:
+    st.session_state.live_talk_active=False
+
+if "live_voice_audio_bytes" not in st.session_state:
+    st.session_state.live_voice_audio_bytes=None
+
+if "live_detected_speech" not in st.session_state:
+    st.session_state.live_detected_speech=""
+
+if "live_translated_text" not in st.session_state:
+    st.session_state.live_translated_text=""
+
+if "live_target_lang_code" not in st.session_state:
+    st.session_state.live_target_lang_code=""
 
 default_text=""
 
@@ -277,42 +291,43 @@ mode=st.radio(
 )
 
 st.markdown("---")
-
 # ======================================================
 # LIVE COMMUNICATION MODE
 # ======================================================
 
 if mode=="Live Communication":
 
-    st.subheader(
-        "📞 Call Setup"
-    )
+    if not st.session_state.live_session_active:
 
-    my_language=st.selectbox(
+        st.subheader(
+            "📞 Call Setup"
+        )
 
-        "I Speak:",
+        my_language=st.selectbox(
 
-        list(
-            languages.keys()
-        ),
+            "I Speak:",
 
-        key="my_language"
+            list(
+                languages.keys()
+            ),
 
-    )
+            key="my_language"
 
-    hear_language=st.selectbox(
+        )
 
-        "I Want To Hear:",
+        hear_language=st.selectbox(
 
-        list(
-            languages.keys()
-        ),
+            "I Want To Hear:",
 
-        key="hear_language"
+            list(
+                languages.keys()
+            ),
 
-    )
+            key="hear_language"
 
-    st.success(
+        )
+
+        st.success(
 
 f"""
 Your Language: {my_language}
@@ -320,9 +335,7 @@ Your Language: {my_language}
 Hear Language: {hear_language}
 """
 
-    )
-
-    if not st.session_state.live_session_active:
+        )
 
         if st.button(
 
@@ -332,15 +345,22 @@ Hear Language: {hear_language}
         ):
 
             st.session_state.live_session_active=True
+            st.session_state.live_talk_active=False
 
             st.session_state.session_speaking_language=my_language
-
             st.session_state.session_hearing_language=hear_language
+
+            st.session_state.live_detected_speech=""
+            st.session_state.live_translated_text=""
+            st.session_state.live_voice_audio_bytes=None
 
             st.rerun()
 
+    else:
 
-    if st.session_state.live_session_active:
+        st.subheader(
+            "🌐 Live Communication"
+        )
 
         st.success(
             "Session Active ✅"
@@ -358,6 +378,113 @@ You Hear: {st.session_state.session_hearing_language}
 
         )
 
+        if not st.session_state.live_talk_active:
+
+            if st.button(
+                "🎤 Push to Talk",
+                use_container_width=True
+            ):
+
+                st.session_state.live_talk_active=True
+                st.rerun()
+
+        else:
+
+            st.info(
+                "🎤 Listening for speech..."
+            )
+
+            live_voice_data=mic_recorder(
+
+                start_prompt="Start Recording",
+
+                stop_prompt="Stop Recording",
+
+                key="live_recorder"
+
+            )
+
+            if live_voice_data and "bytes" in live_voice_data:
+
+                st.session_state.live_voice_audio_bytes=live_voice_data[
+                    "bytes"
+                ]
+
+                st.success(
+                    "Live voice recorded ✅"
+                )
+
+                live_text=speech_to_text(
+
+                    st.session_state.live_voice_audio_bytes
+
+                )
+
+                if live_text:
+
+                    st.session_state.live_detected_speech=live_text
+
+                else:
+
+                    st.warning(
+                        "Could not recognize live speech. Try speaking closer to the mic."
+                    )
+
+            if st.session_state.live_detected_speech:
+
+                st.success(
+
+f"Detected Speech: {st.session_state.live_detected_speech}"
+
+                )
+
+            if st.button(
+                "⏹ Release To Translate",
+                use_container_width=True
+            ):
+
+                if st.session_state.live_detected_speech:
+
+                    translated=GoogleTranslator(
+
+                        source="auto",
+
+                        target=languages[
+                            st.session_state.session_hearing_language
+                        ]
+
+                    ).translate(
+
+                        st.session_state.live_detected_speech
+
+                    )
+
+                    st.session_state.live_translated_text=translated
+
+                    st.session_state.live_target_lang_code=(
+
+                        languages[
+                            st.session_state.session_hearing_language
+                        ]
+
+                    )
+
+                st.session_state.live_talk_active=False
+
+                st.rerun()
+
+        if st.session_state.live_detected_speech:
+
+            st.markdown(
+                f"**Detected Speech:** {st.session_state.live_detected_speech}"
+            )
+
+        if st.session_state.live_translated_text:
+
+            st.success(
+                st.session_state.live_translated_text
+            )
+
         st.info(
             "Live translation engine coming next 🚀"
         )
@@ -370,10 +497,14 @@ You Hear: {st.session_state.session_hearing_language}
         ):
 
             st.session_state.live_session_active=False
+            st.session_state.live_talk_active=False
 
             st.session_state.session_speaking_language=""
-
             st.session_state.session_hearing_language=""
+
+            st.session_state.live_detected_speech=""
+            st.session_state.live_translated_text=""
+            st.session_state.live_voice_audio_bytes=None
 
             st.rerun()
 
@@ -459,7 +590,7 @@ else:
             else:
 
                 st.warning(
-                    "Could not recognize speech. Try speaking closre to mic!"
+                    "Could not recognize speech. Try speaking closer to mic!"
                 )
 
 
