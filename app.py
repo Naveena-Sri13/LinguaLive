@@ -471,56 +471,63 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
 
                 if st.session_state.live_detected_speech:
 
-                    translated=GoogleTranslator(
+                    try:
 
-                        source="auto",
+                        translated=GoogleTranslator(
 
-                        target=languages[
-                            st.session_state.session_hearing_language
-                        ]
+                            source="auto",
 
-                    ).translate(
+                            target=languages[
+                                st.session_state.session_hearing_language
+                            ]
 
-                        st.session_state.live_detected_speech
+                        ).translate(
 
-                    )
+                            st.session_state.live_detected_speech
 
-                    st.session_state.live_translated_text=translated
+                        )
 
-                    st.session_state.live_target_lang_code=(
+                        st.session_state.live_translated_text=translated
 
-                        languages[
-                            st.session_state.session_hearing_language
-                        ]
+                        st.session_state.live_target_lang_code=(
 
-                    )
+                            languages[
+                                st.session_state.session_hearing_language
+                            ]
 
-                    tts=gTTS(
+                        )
 
-                        text=st.session_state.live_translated_text,
+                        tts=gTTS(
 
-                        lang=st.session_state.live_target_lang_code
+                            text=st.session_state.live_translated_text,
 
-                    )
+                            lang=st.session_state.live_target_lang_code
 
-                    tts.save(
-                        "live_translation.mp3"
-                    )
+                        )
 
-                    with open(
+                        tts.save(
+                            "live_translation.mp3"
+                        )
 
-                        "live_translation.mp3",
+                        with open(
 
-                        "rb"
+                            "live_translation.mp3",
 
-                    ) as file:
+                            "rb"
 
-                        st.session_state.live_translation_audio=file.read()
+                        ) as file:
+
+                            st.session_state.live_translation_audio=file.read()
+
+                    except Exception as e:
+
+                        st.error(
+                            f"Live translation failed: {e}"
+                        )
 
                 st.session_state.live_talk_active=False
 
                 st.rerun()
-
 
         if st.session_state.live_translated_text:
 
@@ -531,10 +538,10 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
         if st.session_state.live_translation_audio:
 
             st.audio(
-    st.session_state.live_translation_audio,
-    format="audio/mp3",
-    autoplay=True
-)
+                st.session_state.live_translation_audio,
+                format="audio/mp3",
+                autoplay=True
+            )
 
         if st.button(
 
@@ -554,7 +561,7 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
             st.session_state.live_voice_audio_bytes=None
             st.session_state.live_translation_audio=None
 
-            st.rerun()
+            st.rerun()                
 
 # ======================================================
 # TRANSLATION ASSISTANT MODE
