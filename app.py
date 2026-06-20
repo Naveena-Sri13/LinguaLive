@@ -122,6 +122,18 @@ languages={
 
 }
 
+speech_languages={
+    "English":"en-IN",
+    "Tamil":"ta-IN",
+    "Hindi":"hi-IN",
+    "Telugu":"te-IN",
+    "Malayalam":"ml-IN",
+    "Kannada":"kn-IN",
+    "French":"fr-FR",
+    "Spanish":"es-ES",
+    "German":"de-DE"
+}
+
 language_names={
 
     "en":"English",
@@ -148,7 +160,7 @@ def use_detected_speech():
     )
 
 
-def speech_to_text(audio_bytes):
+def speech_to_text(audio_bytes, language_code="en-IN"):
 
     recognizer=sr.Recognizer()
 
@@ -183,8 +195,9 @@ def speech_to_text(audio_bytes):
             )
 
         text=recognizer.recognize_google(
-            audio_data
-        )
+    audio_data,
+    language=language_code
+)
 
         return text
 
@@ -425,9 +438,13 @@ You Hear: {st.session_state.session_hearing_language}
 
                 live_text=speech_to_text(
 
-                    st.session_state.live_voice_audio_bytes
+    st.session_state.live_voice_audio_bytes,
 
-                )
+    speech_languages[
+        st.session_state.session_speaking_language
+    ]
+
+)
 
                 if live_text:
 
@@ -504,11 +521,6 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
 
                 st.rerun()
 
-        if st.session_state.live_detected_speech:
-
-            st.markdown(
-                f"**Detected Speech:** {st.session_state.live_detected_speech}"
-            )
 
         if st.session_state.live_translated_text:
 
@@ -519,9 +531,10 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
         if st.session_state.live_translation_audio:
 
             st.audio(
-                st.session_state.live_translation_audio,
-                format="audio/mp3"
-            )
+    st.session_state.live_translation_audio,
+    format="audio/mp3",
+    autoplay=True
+)
 
         if st.button(
 
