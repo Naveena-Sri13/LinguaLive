@@ -91,6 +91,9 @@ if "live_translated_text" not in st.session_state:
 if "live_target_lang_code" not in st.session_state:
     st.session_state.live_target_lang_code=""
 
+if "live_translation_audio" not in st.session_state:
+    st.session_state.live_translation_audio=None
+
 default_text=""
 
 
@@ -291,6 +294,7 @@ mode=st.radio(
 )
 
 st.markdown("---")
+
 # ======================================================
 # LIVE COMMUNICATION MODE
 # ======================================================
@@ -353,6 +357,7 @@ Hear Language: {hear_language}
             st.session_state.live_detected_speech=""
             st.session_state.live_translated_text=""
             st.session_state.live_voice_audio_bytes=None
+            st.session_state.live_translation_audio=None
 
             st.rerun()
 
@@ -386,6 +391,10 @@ You Hear: {st.session_state.session_hearing_language}
             ):
 
                 st.session_state.live_talk_active=True
+                st.session_state.live_detected_speech=""
+                st.session_state.live_translated_text=""
+                st.session_state.live_translation_audio=None
+
                 st.rerun()
 
         else:
@@ -469,6 +478,28 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
 
                     )
 
+                    tts=gTTS(
+
+                        text=st.session_state.live_translated_text,
+
+                        lang=st.session_state.live_target_lang_code
+
+                    )
+
+                    tts.save(
+                        "live_translation.mp3"
+                    )
+
+                    with open(
+
+                        "live_translation.mp3",
+
+                        "rb"
+
+                    ) as file:
+
+                        st.session_state.live_translation_audio=file.read()
+
                 st.session_state.live_talk_active=False
 
                 st.rerun()
@@ -485,9 +516,12 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
                 st.session_state.live_translated_text
             )
 
-        st.info(
-            "Live translation engine coming next 🚀"
-        )
+        if st.session_state.live_translation_audio:
+
+            st.audio(
+                st.session_state.live_translation_audio,
+                format="audio/mp3"
+            )
 
         if st.button(
 
@@ -505,6 +539,7 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
             st.session_state.live_detected_speech=""
             st.session_state.live_translated_text=""
             st.session_state.live_voice_audio_bytes=None
+            st.session_state.live_translation_audio=None
 
             st.rerun()
 
