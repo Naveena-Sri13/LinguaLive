@@ -237,8 +237,9 @@ with st.sidebar:
     st.header("🌍 About LinguaLive")
 
     st.markdown("""
-LinguaLive is an **AI-powered multilingual communication platform**
-designed to reduce language barriers in real-time conversations.
+LinguaLive is a **real-time multilingual voice communication platform**.
+
+It helps people speak naturally in their own language while the listener hears the message in their preferred language.
 """)
 
     st.markdown("---")
@@ -250,9 +251,9 @@ designed to reduce language barriers in real-time conversations.
 
 ✅ Text → Speech  
 
-✅ Speech → Text *(in progress)*  
+✅ Speech → Text   
 
-✅ Speech → Speech *(in progress)*  
+✅ Speech → Speech  
 
 ✅ Translation History  
 
@@ -318,6 +319,11 @@ if mode=="Live Communication":
 
         st.subheader(
             "📞 Call Setup"
+        )
+
+        st.info(
+            "Choose the language you will speak and the language you want to hear. "
+            "Then start a session, speak, and LinguaLive will translate and play the audio."
         )
 
         my_language=st.selectbox(
