@@ -94,6 +94,9 @@ if "live_target_lang_code" not in st.session_state:
 if "live_translation_audio" not in st.session_state:
     st.session_state.live_translation_audio=None
 
+if "live_current_turn" not in st.session_state:
+    st.session_state.live_current_turn="you"
+
 default_text=""
 
 
@@ -318,17 +321,17 @@ if mode=="Live Communication":
     if not st.session_state.live_session_active:
 
         st.subheader(
-            "📞 Call Setup"
+            "📞 Start Live Communication"
         )
 
         st.info(
-            "Choose the language you will speak and the language you want to hear. "
-            "Then start a session, speak, and LinguaLive will translate and play the audio."
+            "Set up the call by choosing your language and the other person's language. "
+            "LinguaLive will translate each spoken message so both people can understand each other."
         )
 
         my_language=st.selectbox(
 
-            "I Speak:",
+            "You Speak:",
 
             list(
                 languages.keys()
@@ -340,7 +343,7 @@ if mode=="Live Communication":
 
         hear_language=st.selectbox(
 
-            "I Want To Hear:",
+            "They Speak:",
 
             list(
                 languages.keys()
@@ -353,9 +356,9 @@ if mode=="Live Communication":
         st.success(
 
 f"""
-Your Language: {my_language}
+You Speak: {my_language}
 
-Hear Language: {hear_language}
+They Speak: {hear_language}
 """
 
         )
@@ -377,35 +380,96 @@ Hear Language: {hear_language}
             st.session_state.live_translated_text=""
             st.session_state.live_voice_audio_bytes=None
             st.session_state.live_translation_audio=None
+            st.session_state.live_current_turn="you"
 
             st.rerun()
 
     else:
 
         st.subheader(
-            "🌐 Live Communication"
+            "📞 Live Call"
         )
 
         st.success(
-            "Session Active ✅"
+            "Call Session Active ✅"
         )
+
+        if st.session_state.live_current_turn=="you":
+
+            current_speaker_language=st.session_state.session_speaking_language
+            current_target_language=st.session_state.session_hearing_language
+            current_turn_text="You speak → They hear"
+            detected_label="You said"
+            translated_label="They hear"
+            push_button_label="🎤 Push to Talk — You Speak"
+            release_button_label="⏹ Translate for Them"
+            listening_message="🎤 Listening to you..."
+
+        else:
+
+            current_speaker_language=st.session_state.session_hearing_language
+            current_target_language=st.session_state.session_speaking_language
+            current_turn_text="They speak → You hear"
+            detected_label="They said"
+            translated_label="You hear"
+            push_button_label="🎤 Push to Talk — They Speak"
+            release_button_label="⏹ Translate for You"
+            listening_message="🎤 Listening to the other person..."
 
         st.markdown(
 
 f"""
-🎤 Listening...
+🎧 Call Languages
 
 You Speak: {st.session_state.session_speaking_language}
 
-You Hear: {st.session_state.session_hearing_language}
+They Speak: {st.session_state.session_hearing_language}
+
+Current Turn: **{current_turn_text}**
+
+Press **Push to Talk**, speak, then release to translate.
 """
 
         )
 
         if not st.session_state.live_talk_active:
 
+            col1,col2=st.columns(2)
+
+            with col1:
+
+                if st.button(
+                    "🙋 You Speak",
+                    use_container_width=True
+                ):
+
+                    st.session_state.live_current_turn="you"
+                    st.session_state.live_detected_speech=""
+                    st.session_state.live_translated_text=""
+                    st.session_state.live_translation_audio=None
+
+                    st.rerun()
+
+            with col2:
+
+                if st.button(
+                    "👥 They Speak",
+                    use_container_width=True
+                ):
+
+                    st.session_state.live_current_turn="they"
+                    st.session_state.live_detected_speech=""
+                    st.session_state.live_translated_text=""
+                    st.session_state.live_translation_audio=None
+
+                    st.rerun()
+
+        
+
+        if not st.session_state.live_talk_active:
+
             if st.button(
-                "🎤 Push to Talk",
+                push_button_label,
                 use_container_width=True
             ):
 
@@ -419,7 +483,7 @@ You Hear: {st.session_state.session_hearing_language}
         else:
 
             st.info(
-                "🎤 Listening for speech..."
+                listening_message
             )
 
             live_voice_data=mic_recorder(
@@ -444,13 +508,13 @@ You Hear: {st.session_state.session_hearing_language}
 
                 live_text=speech_to_text(
 
-    st.session_state.live_voice_audio_bytes,
+                    st.session_state.live_voice_audio_bytes,
 
-    speech_languages[
-        st.session_state.session_speaking_language
-    ]
+                    speech_languages[
+                        current_speaker_language
+                    ]
 
-)
+                )
 
                 if live_text:
 
@@ -466,12 +530,13 @@ You Hear: {st.session_state.session_hearing_language}
 
                 st.success(
 
-f"Detected Speech: {st.session_state.live_detected_speech}"
+f"{detected_label}: {st.session_state.live_detected_speech}"
 
                 )
+                
 
             if st.button(
-                "⏹ Release To Translate",
+                release_button_label,
                 use_container_width=True
             ):
 
@@ -484,8 +549,10 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
                             source="auto",
 
                             target=languages[
-                                st.session_state.session_hearing_language
+                                current_target_language
                             ]
+
+                        
 
                         ).translate(
 
@@ -498,7 +565,7 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
                         st.session_state.live_target_lang_code=(
 
                             languages[
-                                st.session_state.session_hearing_language
+                                current_target_language
                             ]
 
                         )
@@ -538,7 +605,9 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
         if st.session_state.live_translated_text:
 
             st.success(
-                st.session_state.live_translated_text
+
+f"{translated_label}: {st.session_state.live_translated_text}"
+
             )
 
         if st.session_state.live_translation_audio:
@@ -566,6 +635,7 @@ f"Detected Speech: {st.session_state.live_detected_speech}"
             st.session_state.live_translated_text=""
             st.session_state.live_voice_audio_bytes=None
             st.session_state.live_translation_audio=None
+            st.session_state.live_current_turn="you"
 
             st.rerun()                
 
