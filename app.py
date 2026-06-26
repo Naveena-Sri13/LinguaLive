@@ -623,6 +623,93 @@ They Speak: {contact['language']}
                         st.session_state.live_session_active=True
                         st.session_state.live_talk_active=False
 
+                    if st.button(
+                        f"🗑️ Delete {contact['name']}",
+                        key=f"delete_contact_{index}",
+                        use_container_width=True
+                    ):
+
+                        del st.session_state.saved_contacts[
+                            index
+                        ]
+
+                        save_json_file(
+                            CONTACTS_FILE,
+                            st.session_state.saved_contacts
+                        )
+
+                        st.success(
+                            "Contact deleted ✅"
+                        )
+
+                        st.rerun()
+
+                    with st.expander(
+                        f"✏️ Edit {contact['name']}",
+                        expanded=False
+                    ):
+
+                        with st.form(
+                            f"edit_contact_form_{index}"
+                        ):
+
+                            updated_name=st.text_input(
+                                "Contact Name:",
+                                value=contact["name"],
+                                key=f"edit_name_{index}"
+                            )
+
+                            updated_number=st.text_input(
+                                "Phone / Contact Number:",
+                                value=contact["number"],
+                                key=f"edit_number_{index}"
+                            )
+
+                            updated_language=st.selectbox(
+                                "They Speak:",
+                                live_languages,
+                                index=live_languages.index(
+                                    contact["language"]
+                                )
+                                if contact["language"] in live_languages
+                                else 0,
+                                key=f"edit_language_{index}"
+                            )
+
+                            update_contact=st.form_submit_button(
+                                "💾 Save Changes",
+                                use_container_width=True
+                            )
+
+                        if update_contact:
+
+                            st.session_state.saved_contacts[index]={
+
+                                "name":updated_name.strip()
+                                if updated_name.strip()
+                                else "Unnamed Contact",
+
+                                "number":updated_number.strip()
+                                if updated_number.strip()
+                                else "No number",
+
+                                "language":updated_language
+
+                            }
+
+                            save_json_file(
+                                CONTACTS_FILE,
+                                st.session_state.saved_contacts
+                            )
+
+                            st.success(
+                                "Contact updated ✅"
+                            )
+
+                            st.rerun()
+
+                    
+
                         st.session_state.session_contact=contact[
                             "name"
                         ]
@@ -717,6 +804,27 @@ They Speak: {call['they_speak']}
                         st.session_state.live_detected_label=""
                         st.session_state.live_translated_label=""
                         st.session_state.live_current_turn="you"
+
+                        st.rerun()
+
+                    if st.button(
+                        f"🗑️ Delete Call - {call['contact']}",
+                        key=f"delete_recent_call_{index}",
+                        use_container_width=True
+                    ):
+
+                        del st.session_state.recent_calls[
+                            index
+                        ]
+
+                        save_json_file(
+                            RECENT_CALLS_FILE,
+                            st.session_state.recent_calls
+                        )
+
+                        st.success(
+                            "Recent call deleted ✅"
+                        )
 
                         st.rerun()
 
