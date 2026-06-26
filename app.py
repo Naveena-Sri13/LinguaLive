@@ -12,6 +12,7 @@ import speech_recognition as sr
 from pydub import AudioSegment
 import io
 import os
+import json
 
 FFMPEG_PATH = r"C:\Users\navee\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
 
@@ -32,6 +33,74 @@ AudioSegment.ffprobe = os.path.join(
 
 if FFMPEG_PATH not in os.environ["PATH"]:
     os.environ["PATH"] += os.pathsep + FFMPEG_PATH
+
+DATA_DIR="data"
+
+CONTACTS_FILE=os.path.join(
+    DATA_DIR,
+    "contacts.json"
+)
+
+RECENT_CALLS_FILE=os.path.join(
+    DATA_DIR,
+    "recent_calls.json"
+)
+
+
+def ensure_data_folder():
+
+    if not os.path.exists(
+        DATA_DIR
+    ):
+
+        os.makedirs(
+            DATA_DIR
+        )
+
+
+def load_json_file(file_path,default_value):
+
+    try:
+
+        ensure_data_folder()
+
+        if os.path.exists(
+            file_path
+        ):
+
+            with open(
+                file_path,
+                "r",
+                encoding="utf-8"
+            ) as file:
+
+                return json.load(
+                    file
+                )
+
+        return default_value
+
+    except Exception:
+
+        return default_value
+
+
+def save_json_file(file_path,data):
+
+    ensure_data_folder()
+
+    with open(
+        file_path,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        json.dump(
+            data,
+            file,
+            ensure_ascii=False,
+            indent=4
+        )
 
 
 # ---------------- PAGE CONFIG ----------------
@@ -81,10 +150,16 @@ if "session_contact" not in st.session_state:
     st.session_state.session_contact=""
 
 if "saved_contacts" not in st.session_state:
-    st.session_state.saved_contacts=[]
+    st.session_state.saved_contacts=load_json_file(
+        CONTACTS_FILE,
+        []
+    )
 
 if "recent_calls" not in st.session_state:
-    st.session_state.recent_calls=[]
+    st.session_state.recent_calls=load_json_file(
+        RECENT_CALLS_FILE,
+        []
+    )
 
 if "call_started_at" not in st.session_state:
     st.session_state.call_started_at=None
@@ -507,6 +582,11 @@ They Speak: {hear_language}
                         "language":contact_language
 
                     })
+
+                    save_json_file(
+                        CONTACTS_FILE,
+                        st.session_state.saved_contacts
+                    )
 
                     st.success(
                         "Contact saved ✅"
@@ -1013,6 +1093,11 @@ Output Language: **{current_target_language}**
                             "%d %b %Y, %I:%M %p"
                         )
                     }
+                )
+
+                save_json_file(
+                    RECENT_CALLS_FILE,
+                    st.session_state.recent_calls
                 )
 
             st.session_state.live_session_active=False
