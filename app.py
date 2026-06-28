@@ -425,7 +425,7 @@ mode=st.radio(
 if mode=="Live Communication":
 
     if not st.session_state.live_session_active:
-        
+
         st.subheader(
             "📞 Live Communication"
         )
@@ -438,11 +438,12 @@ if mode=="Live Communication":
             ]
         )
 
+        # ---------------- START NEW CALL TAB ----------------
+
         with call_tab:
 
             st.info(
-                "Set up the call by choosing your language and the other person's language. "
-                "LinguaLive will translate each spoken message so both people can understand each other."
+                "Set up the call once. LinguaLive will use these session languages during the call."
             )
 
             st.markdown(
@@ -455,23 +456,15 @@ if mode=="Live Communication":
             )
 
             my_language=st.selectbox(
-
                 "You Speak:",
-
                 live_languages,
-
                 key="my_language"
-
             )
 
             hear_language=st.selectbox(
-
                 "They Speak:",
-
                 live_languages,
-
                 key="hear_language"
-
             )
 
             st.success(
@@ -487,24 +480,22 @@ They Speak: {hear_language}
             )
 
             if st.button(
-
                 "🟢 Start Call",
+                key="start_new_call",
                 use_container_width=True
-
             ):
 
                 st.session_state.live_session_active=True
                 st.session_state.live_talk_active=False
 
-                st.session_state.session_speaking_language=my_language
-                st.session_state.session_hearing_language=hear_language
-
                 st.session_state.session_contact=(
-                    contact_input
+                    contact_input.strip()
                     if contact_input.strip()
                     else "New Contact"
                 )
 
+                st.session_state.session_speaking_language=my_language
+                st.session_state.session_hearing_language=hear_language
                 st.session_state.call_started_at=datetime.now()
 
                 st.session_state.live_detected_speech=""
@@ -517,20 +508,12 @@ They Speak: {hear_language}
 
                 st.rerun()
 
+        # ---------------- CONTACTS TAB ----------------
+
         with contacts_tab:
 
             st.markdown(
                 "### 👥 Add Contact"
-            )
-            
-            st.markdown(
-                "### 📞 Call From Contacts"
-            )
-
-            contact_call_language=st.selectbox(
-                "You Speak:",
-                live_languages,
-                key="contact_call_language"
             )
 
             with st.form(
@@ -591,6 +574,18 @@ They Speak: {hear_language}
                     st.success(
                         "Contact saved ✅"
                     )
+
+                    st.rerun()
+
+            st.markdown(
+                "### 📞 Call From Contacts"
+            )
+
+            contact_call_language=st.selectbox(
+                "You Speak:",
+                live_languages,
+                key="contact_call_language"
+            )
 
             st.markdown(
                 "### 📒 Contact List"
@@ -708,36 +703,13 @@ They Speak: {contact['language']}
 
                             st.rerun()
 
-                    
-
-                        st.session_state.session_contact=contact[
-                            "name"
-                        ]
-
-                        st.session_state.session_speaking_language=contact_call_language
-                        st.session_state.session_hearing_language=contact[
-                            "language"
-                        ]
-
-                        st.session_state.call_started_at=datetime.now()
-
-                        st.session_state.live_detected_speech=""
-                        st.session_state.live_translated_text=""
-                        st.session_state.live_voice_audio_bytes=None
-                        st.session_state.live_translation_audio=None
-                        st.session_state.live_detected_label=""
-                        st.session_state.live_translated_label=""
-                        st.session_state.live_current_turn="you"
-
-                        st.rerun()
-
-                
-
             else:
 
                 st.caption(
                     "No contacts saved yet."
                 )
+
+        # ---------------- RECENT CALLS TAB ----------------
 
         with history_tab:
 
@@ -833,7 +805,10 @@ They Speak: {call['they_speak']}
                 st.caption(
                     "No recent calls yet."
                 )
+
     else:
+
+        # ---------------- ACTIVE CALL SCREEN ----------------
 
         st.subheader(
             "📞 Live Call"
@@ -842,72 +817,37 @@ They Speak: {call['they_speak']}
         st.success(
             "Call Session Active ✅"
         )
-        
+
         if st.session_state.call_started_at:
+
+            call_duration=datetime.now()-st.session_state.call_started_at
+
+            duration_seconds=int(
+                call_duration.total_seconds()
+            )
+
+            hours=duration_seconds//3600
+            minutes=(duration_seconds%3600)//60
+            seconds=duration_seconds%60
+
+            if hours>0:
+
+                duration_text=f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+            else:
+
+                duration_text=f"{minutes:02d}:{seconds:02d}"
 
             st.markdown(
 
 f"""
-### 📲 Calling: {st.session_state.session_contact}
+📲 Calling: **{st.session_state.session_contact}**
+
+⏱ Call Duration: **{duration_text}**
 """
 
             )
 
-            start_timestamp=int(
-                st.session_state.call_started_at.timestamp()*1000
-            )
-
-            components.html(
-
-f"""
-<div style="
-    width:100%;
-    text-align:left;
-    font-size:16px;
-    font-weight:400;
-    color:white;
-    margin-top:0px;
-    margin-bottom:14px;
-">
-    ⏱ <span id="call-timer">00:00</span>
-</div>
-
-<script>
-const startTime = {start_timestamp};
-
-function updateTimer() {{
-    const now = Date.now();
-    const elapsedSeconds = Math.floor((now - startTime) / 1000);
-
-    const hours = Math.floor(elapsedSeconds / 3600);
-    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-    const seconds = elapsedSeconds % 60;
-
-    let formatted = "";
-
-    if (hours > 0) {{
-        formatted =
-            String(hours).padStart(2, '0') + ":" +
-            String(minutes).padStart(2, '0') + ":" +
-            String(seconds).padStart(2, '0');
-    }} else {{
-        formatted =
-            String(minutes).padStart(2, '0') + ":" +
-            String(seconds).padStart(2, '0');
-    }}
-
-    document.getElementById("call-timer").innerText = formatted;
-}}
-
-updateTimer();
-setInterval(updateTimer, 1000);
-</script>
-""",
-
-                height=45
-
-            )
-        
         if st.session_state.live_current_turn=="you":
 
             current_speaker_language=st.session_state.session_speaking_language
@@ -939,7 +879,7 @@ Current Turn: **{current_turn_text}**
 
 Speaking Language: **{current_speaker_language}**
 
-Output Language: **{current_target_language}**
+Hearing Language: **{current_target_language}**
 """
 
         )
@@ -956,6 +896,7 @@ Output Language: **{current_target_language}**
 
                 if st.button(
                     "🙋 You Speak",
+                    key="manual_you_speak",
                     use_container_width=True
                 ):
 
@@ -972,6 +913,7 @@ Output Language: **{current_target_language}**
 
                 if st.button(
                     "👥 They Speak",
+                    key="manual_they_speak",
                     use_container_width=True
                 ):
 
@@ -984,12 +926,9 @@ Output Language: **{current_target_language}**
 
                     st.rerun()
 
-        
-
-        if not st.session_state.live_talk_active:
-
             if st.button(
                 push_button_label,
+                key="push_to_talk_live",
                 use_container_width=True
             ):
 
@@ -1009,13 +948,9 @@ Output Language: **{current_target_language}**
             )
 
             live_voice_data=mic_recorder(
-
                 start_prompt="Start Recording",
-
                 stop_prompt="Stop Recording",
-
                 key="live_recorder"
-
             )
 
             if live_voice_data and "bytes" in live_voice_data:
@@ -1029,13 +964,10 @@ Output Language: **{current_target_language}**
                 )
 
                 live_text=speech_to_text(
-
                     st.session_state.live_voice_audio_bytes,
-
                     speech_languages[
                         current_speaker_language
                     ]
-
                 )
 
                 if live_text:
@@ -1064,10 +996,10 @@ Output Language: **{current_target_language}**
                         f"**{st.session_state.live_detected_label}:** "
                         f"{st.session_state.live_detected_speech}"
                     )
-                
 
             if st.button(
                 release_button_label,
+                key="release_to_translate_live",
                 use_container_width=True
             ):
 
@@ -1076,38 +1008,24 @@ Output Language: **{current_target_language}**
                     try:
 
                         translated=GoogleTranslator(
-
                             source="auto",
-
                             target=languages[
                                 current_target_language
                             ]
-
-                        
-
                         ).translate(
-
                             st.session_state.live_detected_speech
-
                         )
 
                         st.session_state.live_translated_text=translated
                         st.session_state.live_translated_label=translated_label
 
-                        st.session_state.live_target_lang_code=(
-
-                            languages[
-                                current_target_language
-                            ]
-
-                        )
+                        st.session_state.live_target_lang_code=languages[
+                            current_target_language
+                        ]
 
                         tts=gTTS(
-
                             text=st.session_state.live_translated_text,
-
                             lang=st.session_state.live_target_lang_code
-
                         )
 
                         tts.save(
@@ -1115,11 +1033,8 @@ Output Language: **{current_target_language}**
                         )
 
                         with open(
-
                             "live_translation.mp3",
-
                             "rb"
-
                         ) as file:
 
                             st.session_state.live_translation_audio=file.read()
@@ -1132,13 +1047,17 @@ Output Language: **{current_target_language}**
 
                             st.session_state.live_current_turn="you"
 
-                        
-
                     except Exception as e:
 
                         st.error(
                             f"Live translation failed: {e}"
                         )
+
+                else:
+
+                    st.warning(
+                        "Please record speech before translating."
+                    )
 
                 st.session_state.live_talk_active=False
 
@@ -1174,12 +1093,11 @@ Output Language: **{current_target_language}**
             )
 
         if st.button(
-
             "🔴 End Call",
+            key="end_live_call",
             use_container_width=True
-
         ):
-            
+
             if st.session_state.call_started_at:
 
                 call_ended_at=datetime.now()
@@ -1215,8 +1133,6 @@ Output Language: **{current_target_language}**
             st.session_state.session_hearing_language=""
             st.session_state.session_contact=""
             st.session_state.call_started_at=None
-            
-
 
             st.session_state.live_detected_speech=""
             st.session_state.live_translated_text=""
@@ -1226,7 +1142,7 @@ Output Language: **{current_target_language}**
             st.session_state.live_translated_label=""
             st.session_state.live_current_turn="you"
 
-            st.rerun()                
+            st.rerun()               
 
 # ======================================================
 # TRANSLATION ASSISTANT MODE
