@@ -1,106 +1,48 @@
 import streamlit as st
 import streamlit.components.v1 as components
-from deep_translator import GoogleTranslator
-from gtts import gTTS
-import langid
 import pyperclip
+
+from translator import (
+    translate_text,
+    translate_for_call,
+    detect_language_key,
+    TranslationError,
+)
+
+
 from streamlit_mic_recorder import mic_recorder
 from datetime import datetime
 
-# Speech → Text preparation
-import speech_recognition as sr
-from pydub import AudioSegment
-import io
 import os
 import json
 
-FFMPEG_PATH = r"C:\Users\navee\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin"
+from config import (
+    settings,
+    CONTACTS_FILE,
+    RECENT_CALLS_FILE,
+    SUPPORTED_LANGUAGES,
+    get_language,
+)
+languages = {
+    lang.display_name: lang.translate_code
+    for lang in SUPPORTED_LANGUAGES.values()
+}
 
-AudioSegment.converter = os.path.join(
-    FFMPEG_PATH,
-    "ffmpeg.exe"
+live_languages = list(languages.keys())
+
+from storage import (
+    ensure_data_folder,
+    load_json_file,
+    save_json_file
 )
 
-AudioSegment.ffmpeg = os.path.join(
-    FFMPEG_PATH,
-    "ffmpeg.exe"
-)
-
-AudioSegment.ffprobe = os.path.join(
-    FFMPEG_PATH,
-    "ffprobe.exe"
-)
-
-if FFMPEG_PATH not in os.environ["PATH"]:
-    os.environ["PATH"] += os.pathsep + FFMPEG_PATH
-
-DATA_DIR="data"
-
-CONTACTS_FILE=os.path.join(
-    DATA_DIR,
-    "contacts.json"
-)
-
-RECENT_CALLS_FILE=os.path.join(
-    DATA_DIR,
-    "recent_calls.json"
+from speech import (
+    transcribe_audio_bytes,
+    synthesize_speech_bytes,
+    SpeechError
 )
 
 
-def ensure_data_folder():
-
-    if not os.path.exists(
-        DATA_DIR
-    ):
-
-        os.makedirs(
-            DATA_DIR
-        )
-
-
-def load_json_file(file_path,default_value):
-
-    try:
-
-        ensure_data_folder()
-
-        if os.path.exists(
-            file_path
-        ):
-
-            with open(
-                file_path,
-                "r",
-                encoding="utf-8"
-            ) as file:
-
-                return json.load(
-                    file
-                )
-
-        return default_value
-
-    except Exception:
-
-        return default_value
-
-
-def save_json_file(file_path,data):
-
-    ensure_data_folder()
-
-    with open(
-        file_path,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            data,
-            file,
-            ensure_ascii=False,
-            indent=4
-        )
 
 
 # ---------------- PAGE CONFIG ----------------
@@ -164,6 +106,9 @@ if "recent_calls" not in st.session_state:
 if "call_started_at" not in st.session_state:
     st.session_state.call_started_at=None
 
+if "call_status" not in st.session_state:
+    st.session_state.call_status="idle"
+
 if "live_talk_active" not in st.session_state:
     st.session_state.live_talk_active=False
 
@@ -200,59 +145,6 @@ if "reuse_text" in st.session_state:
 
     del st.session_state["reuse_text"]
 
-# ---------------- LANGUAGES ----------------
-
-languages={
-
-    "Tamil":"ta",
-    "Hindi":"hi",
-    "Spanish":"es",
-    "French":"fr",
-    "English":"en",
-    "German":"de",
-    "Italian":"it",
-    "Japanese":"ja",
-    "Korean":"ko",
-    "Arabic":"ar",
-    "Portuguese":"pt",
-    "Russian":"ru"
-
-}
-
-speech_languages={
-    "English":"en-IN",
-    "Tamil":"ta-IN",
-    "Hindi":"hi-IN",
-    "Telugu":"te-IN",
-    "Malayalam":"ml-IN",
-    "Kannada":"kn-IN",
-    "French":"fr-FR",
-    "Spanish":"es-ES",
-    "German":"de-DE"
-}
-
-live_languages=[
-    lang
-    for lang in languages.keys()
-    if lang in speech_languages
-]
-
-language_names={
-
-    "en":"English",
-    "ta":"Tamil",
-    "hi":"Hindi",
-    "es":"Spanish",
-    "fr":"French",
-    "de":"German",
-    "it":"Italian",
-    "pt":"Portuguese",
-    "ru":"Russian",
-    "ja":"Japanese",
-    "ko":"Korean",
-    "ar":"Arabic"
-
-}
 
 # ---------------- SPEECH TO TEXT ----------------
 
@@ -261,67 +153,6 @@ def use_detected_speech():
     st.session_state.text_input_value=(
         st.session_state.detected_speech_text
     )
-
-
-def speech_to_text(audio_bytes, language_code="en-IN"):
-
-    recognizer=sr.Recognizer()
-
-    try:
-
-        audio=AudioSegment.from_file(
-            io.BytesIO(audio_bytes),
-            format="webm"
-        )
-
-        audio=audio.set_channels(
-            1
-        ).set_frame_rate(
-            16000
-        )
-
-        wav_io=io.BytesIO()
-
-        audio.export(
-            wav_io,
-            format="wav"
-        )
-
-        wav_io.seek(0)
-
-        with sr.AudioFile(
-            wav_io
-        ) as source:
-
-            audio_data=recognizer.record(
-                source
-            )
-
-        text=recognizer.recognize_google(
-    audio_data,
-    language=language_code
-)
-
-        return text
-
-
-    except sr.UnknownValueError:
-
-        return None
-
-
-    except sr.RequestError:
-
-        return None
-
-
-    except Exception as e:
-
-        st.error(
-            f"Speech processing error: {e}"
-        )
-
-        return None
 
 # ---------------- TITLE ----------------
 
@@ -497,6 +328,7 @@ They Speak: {hear_language}
                 st.session_state.session_speaking_language=my_language
                 st.session_state.session_hearing_language=hear_language
                 st.session_state.call_started_at=datetime.now()
+                st.session_state.call_status="calling"
 
                 st.session_state.live_detected_speech=""
                 st.session_state.live_translated_text=""
@@ -512,59 +344,178 @@ They Speak: {hear_language}
 
         with contacts_tab:
 
-            st.markdown(
-                "### 👥 Add Contact"
+           st.markdown("## 👥 Contacts")
+
+           st.caption(
+        "Save contacts and quickly start multilingual conversations."
+    )
+
+    # ---------------------------------------------------
+    # Add Contact
+    # ---------------------------------------------------
+
+    with st.expander(
+        "➕ Add New Contact",
+        expanded=True
+    ):
+
+        with st.form(
+            "add_contact_form",
+            clear_on_submit=True
+        ):
+
+            contact_name = st.text_input(
+                "👤 Contact Name",
+                placeholder="Example: Rohith"
             )
 
-            with st.form(
-                "add_contact_form",
-                clear_on_submit=True
+            contact_number = st.text_input(
+                "📞 Phone Number",
+                placeholder="+91 XXXXX XXXXX"
+            )
+
+            contact_language = st.selectbox(
+                "🌐 Preferred Language",
+                live_languages,
+                key="new_contact_language"
+            )
+
+            save_contact = st.form_submit_button(
+                "Save Contact",
+                use_container_width=True
+            )
+
+        if save_contact:
+
+            if (
+                contact_name.strip() == ""
+                and
+                contact_number.strip() == ""
             ):
 
-                contact_name=st.text_input(
-                    "Contact Name:",
-                    placeholder="Example: Amma"
+                st.warning(
+                    "Please enter at least a contact name or phone number."
                 )
 
-                contact_number=st.text_input(
-                    "Phone / Contact Number:",
-                    placeholder="Example: +91..."
-                )
+            else:
 
-                contact_language=st.selectbox(
-                    "They Speak:",
-                    live_languages,
-                    key="new_contact_language"
-                )
+                st.session_state.saved_contacts.append(
 
-                save_contact=st.form_submit_button(
-                    "➕ Save Contact",
-                    use_container_width=True
-                )
+                    {
 
-            if save_contact:
-
-                if contact_name.strip()=="" and contact_number.strip()=="":
-
-                    st.warning(
-                        "Please enter at least a contact name or number."
-                    )
-
-                else:
-
-                    st.session_state.saved_contacts.append({
-
-                        "name":contact_name.strip()
+                        "name":
+                        contact_name.strip()
                         if contact_name.strip()
                         else "Unnamed Contact",
 
-                        "number":contact_number.strip()
+                        "number":
+                        contact_number.strip()
                         if contact_number.strip()
-                        else "No number",
+                        else "No Number",
 
-                        "language":contact_language
+                        "language":
+                        contact_language
 
-                    })
+                    }
+
+                )
+
+                save_json_file(
+                    CONTACTS_FILE,
+                    st.session_state.saved_contacts
+                )
+
+                st.success(
+                    "Contact saved successfully."
+                )
+
+                st.rerun()
+
+    st.divider()
+
+    # ---------------------------------------------------
+    # Call Settings
+    # ---------------------------------------------------
+
+    st.markdown("### 📞 Start a Call")
+
+    contact_call_language = st.selectbox(
+        "🌐 Your Language",
+        live_languages,
+        key="contact_call_language"
+    )
+
+    st.divider()
+
+    # ---------------------------------------------------
+    # Saved Contacts
+    # ---------------------------------------------------
+
+    st.markdown("### 📒 Saved Contacts")
+
+    if st.session_state.saved_contacts:
+
+        for index, contact in enumerate(
+            st.session_state.saved_contacts
+        ):
+
+            st.markdown(
+                f"""
+### 👤 {contact['name']}
+
+📞 **{contact['number']}**
+
+🌐 **{contact['language']}**
+"""
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                if st.button(
+                    "📞 Call",
+                    key=f"call_contact_{index}",
+                    use_container_width=True
+                ):
+
+                    st.session_state.live_session_active = True
+                    st.session_state.live_talk_active = False
+
+                    st.session_state.session_contact = contact["name"]
+
+                    st.session_state.session_speaking_language = (
+                        contact_call_language
+                    )
+
+                    st.session_state.session_hearing_language = (
+                        contact["language"]
+                    )
+
+                    st.session_state.call_started_at = datetime.now()
+
+                    st.session_state.call_status = "calling"
+
+                    st.session_state.live_detected_speech = ""
+                    st.session_state.live_translated_text = ""
+                    st.session_state.live_translation_audio = None
+                    st.session_state.live_voice_audio_bytes = None
+
+                    st.session_state.live_current_turn = "you"
+
+                    st.rerun()
+
+            with col2:
+
+                if st.button(
+                    "🗑 Delete",
+                    key=f"delete_contact_{index}",
+                    use_container_width=True
+                ):
+
+                    del st.session_state.saved_contacts[
+                        index
+                    ]
 
                     save_json_file(
                         CONTACTS_FILE,
@@ -572,144 +523,89 @@ They Speak: {hear_language}
                     )
 
                     st.success(
-                        "Contact saved ✅"
+                        "Contact deleted."
                     )
 
                     st.rerun()
 
-            st.markdown(
-                "### 📞 Call From Contacts"
-            )
+            with st.expander(
+                "✏️ Edit Contact",
+                expanded=False
+            ):
 
-            contact_call_language=st.selectbox(
-                "You Speak:",
-                live_languages,
-                key="contact_call_language"
-            )
-
-            st.markdown(
-                "### 📒 Contact List"
-            )
-
-            if st.session_state.saved_contacts:
-
-                for index,contact in enumerate(
-                    st.session_state.saved_contacts
+                with st.form(
+                    f"edit_contact_form_{index}"
                 ):
 
-                    st.info(
-
-f"""
-**{contact['name']}**
-
-Number: {contact['number']}
-
-They Speak: {contact['language']}
-"""
-
+                    updated_name = st.text_input(
+                        "👤 Contact Name",
+                        value=contact["name"],
+                        key=f"edit_name_{index}"
                     )
 
-                    if st.button(
-                        f"📞 Call {contact['name']}",
-                        key=f"call_contact_{index}",
+                    updated_number = st.text_input(
+                        "📞 Phone Number",
+                        value=contact["number"],
+                        key=f"edit_number_{index}"
+                    )
+
+                    updated_language = st.selectbox(
+                        "🌐 Preferred Language",
+                        live_languages,
+                        index=(
+                            live_languages.index(
+                                contact["language"]
+                            )
+                            if contact["language"] in live_languages
+                            else 0
+                        ),
+                        key=f"edit_language_{index}"
+                    )
+
+                    update_contact = st.form_submit_button(
+                        "Save Changes",
                         use_container_width=True
-                    ):
+                    )
 
-                        st.session_state.live_session_active=True
-                        st.session_state.live_talk_active=False
+                if update_contact:
 
-                    if st.button(
-                        f"🗑️ Delete {contact['name']}",
-                        key=f"delete_contact_{index}",
-                        use_container_width=True
-                    ):
+                    st.session_state.saved_contacts[index] = {
 
-                        del st.session_state.saved_contacts[
-                            index
-                        ]
+                        "name":
+                        updated_name.strip()
+                        if updated_name.strip()
+                        else "Unnamed Contact",
 
-                        save_json_file(
-                            CONTACTS_FILE,
-                            st.session_state.saved_contacts
-                        )
+                        "number":
+                        updated_number.strip()
+                        if updated_number.strip()
+                        else "No Number",
 
-                        st.success(
-                            "Contact deleted ✅"
-                        )
+                        "language":
+                        updated_language
 
-                        st.rerun()
+                    }
 
-                    with st.expander(
-                        f"✏️ Edit {contact['name']}",
-                        expanded=False
-                    ):
+                    save_json_file(
+                        CONTACTS_FILE,
+                        st.session_state.saved_contacts
+                    )
 
-                        with st.form(
-                            f"edit_contact_form_{index}"
-                        ):
+                    st.success(
+                        "Contact updated."
+                    )
 
-                            updated_name=st.text_input(
-                                "Contact Name:",
-                                value=contact["name"],
-                                key=f"edit_name_{index}"
-                            )
+                    st.rerun()
 
-                            updated_number=st.text_input(
-                                "Phone / Contact Number:",
-                                value=contact["number"],
-                                key=f"edit_number_{index}"
-                            )
+            st.divider()
 
-                            updated_language=st.selectbox(
-                                "They Speak:",
-                                live_languages,
-                                index=live_languages.index(
-                                    contact["language"]
-                                )
-                                if contact["language"] in live_languages
-                                else 0,
-                                key=f"edit_language_{index}"
-                            )
+    else:
 
-                            update_contact=st.form_submit_button(
-                                "💾 Save Changes",
-                                use_container_width=True
-                            )
+        st.caption(
+            "No contacts saved yet."
+        )
 
-                        if update_contact:
-
-                            st.session_state.saved_contacts[index]={
-
-                                "name":updated_name.strip()
-                                if updated_name.strip()
-                                else "Unnamed Contact",
-
-                                "number":updated_number.strip()
-                                if updated_number.strip()
-                                else "No number",
-
-                                "language":updated_language
-
-                            }
-
-                            save_json_file(
-                                CONTACTS_FILE,
-                                st.session_state.saved_contacts
-                            )
-
-                            st.success(
-                                "Contact updated ✅"
-                            )
-
-                            st.rerun()
-
-            else:
-
-                st.caption(
-                    "No contacts saved yet."
-                )
-
-        # ---------------- RECENT CALLS TAB ----------------
+# ---------------- RECENT CALLS TAB ----------------
 
         with history_tab:
 
@@ -719,16 +615,16 @@ They Speak: {contact['language']}
 
             if st.session_state.recent_calls:
 
-                for index,call in enumerate(
+                for index, call in enumerate(
                     st.session_state.recent_calls
                 ):
 
-                    duration_seconds=call[
+                    duration_seconds = call[
                         "duration_seconds"
                     ]
 
-                    minutes=duration_seconds//60
-                    seconds=duration_seconds%60
+                    minutes = duration_seconds // 60
+                    seconds = duration_seconds % 60
 
                     st.info(
 
@@ -752,30 +648,30 @@ They Speak: {call['they_speak']}
                         use_container_width=True
                     ):
 
-                        st.session_state.live_session_active=True
-                        st.session_state.live_talk_active=False
+                        st.session_state.live_session_active = True
+                        st.session_state.live_talk_active = False
 
-                        st.session_state.session_contact=call[
+                        st.session_state.session_contact = call[
                             "contact"
                         ]
 
-                        st.session_state.session_speaking_language=call[
+                        st.session_state.session_speaking_language = call[
                             "you_speak"
                         ]
 
-                        st.session_state.session_hearing_language=call[
+                        st.session_state.session_hearing_language = call[
                             "they_speak"
                         ]
 
-                        st.session_state.call_started_at=datetime.now()
+                        st.session_state.call_started_at = datetime.now()
 
-                        st.session_state.live_detected_speech=""
-                        st.session_state.live_translated_text=""
-                        st.session_state.live_voice_audio_bytes=None
-                        st.session_state.live_translation_audio=None
-                        st.session_state.live_detected_label=""
-                        st.session_state.live_translated_label=""
-                        st.session_state.live_current_turn="you"
+                        st.session_state.live_detected_speech = ""
+                        st.session_state.live_translated_text = ""
+                        st.session_state.live_voice_audio_bytes = None
+                        st.session_state.live_translation_audio = None
+                        st.session_state.live_detected_label = ""
+                        st.session_state.live_translated_label = ""
+                        st.session_state.live_current_turn = "you"
 
                         st.rerun()
 
@@ -799,350 +695,12 @@ They Speak: {call['they_speak']}
                         )
 
                         st.rerun()
-
             else:
 
                 st.caption(
                     "No recent calls yet."
                 )
-
-    else:
-
-        # ---------------- ACTIVE CALL SCREEN ----------------
-
-        st.subheader(
-            "📞 Live Call"
-        )
-
-        st.success(
-            "Call Session Active ✅"
-        )
-
-        if st.session_state.call_started_at:
-
-            call_duration=datetime.now()-st.session_state.call_started_at
-
-            duration_seconds=int(
-                call_duration.total_seconds()
-            )
-
-            hours=duration_seconds//3600
-            minutes=(duration_seconds%3600)//60
-            seconds=duration_seconds%60
-
-            if hours>0:
-
-                duration_text=f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-            else:
-
-                duration_text=f"{minutes:02d}:{seconds:02d}"
-
-            st.markdown(
-
-f"""
-📲 Calling: **{st.session_state.session_contact}**
-
-⏱ Call Duration: **{duration_text}**
-"""
-
-            )
-
-        if st.session_state.live_current_turn=="you":
-
-            current_speaker_language=st.session_state.session_speaking_language
-            current_target_language=st.session_state.session_hearing_language
-            current_turn_text="You speak → They hear"
-            detected_label="You said"
-            translated_label="They hear"
-            push_button_label="🎤 Push to Talk — You Speak"
-            release_button_label="⏹ Translate for Them"
-            listening_message="🎤 Listening to you..."
-
-        else:
-
-            current_speaker_language=st.session_state.session_hearing_language
-            current_target_language=st.session_state.session_speaking_language
-            current_turn_text="They speak → You hear"
-            detected_label="They said"
-            translated_label="You hear"
-            push_button_label="🎤 Push to Talk — They Speak"
-            release_button_label="⏹ Translate for You"
-            listening_message="🎤 Listening to the other person..."
-
-        st.info(
-
-f"""
-🎧 Call Languages
-
-Current Turn: **{current_turn_text}**
-
-Speaking Language: **{current_speaker_language}**
-
-Hearing Language: **{current_target_language}**
-"""
-
-        )
-
-        st.markdown(
-            "Press **Push to Talk**, speak, then release to translate."
-        )
-
-        if not st.session_state.live_talk_active:
-
-            col1,col2=st.columns(2)
-
-            with col1:
-
-                if st.button(
-                    "🙋 You Speak",
-                    key="manual_you_speak",
-                    use_container_width=True
-                ):
-
-                    st.session_state.live_current_turn="you"
-                    st.session_state.live_detected_speech=""
-                    st.session_state.live_translated_text=""
-                    st.session_state.live_translation_audio=None
-                    st.session_state.live_detected_label=""
-                    st.session_state.live_translated_label=""
-
-                    st.rerun()
-
-            with col2:
-
-                if st.button(
-                    "👥 They Speak",
-                    key="manual_they_speak",
-                    use_container_width=True
-                ):
-
-                    st.session_state.live_current_turn="they"
-                    st.session_state.live_detected_speech=""
-                    st.session_state.live_translated_text=""
-                    st.session_state.live_translation_audio=None
-                    st.session_state.live_detected_label=""
-                    st.session_state.live_translated_label=""
-
-                    st.rerun()
-
-            if st.button(
-                push_button_label,
-                key="push_to_talk_live",
-                use_container_width=True
-            ):
-
-                st.session_state.live_talk_active=True
-                st.session_state.live_detected_speech=""
-                st.session_state.live_translated_text=""
-                st.session_state.live_translation_audio=None
-                st.session_state.live_detected_label=""
-                st.session_state.live_translated_label=""
-
-                st.rerun()
-
-        else:
-
-            st.info(
-                listening_message
-            )
-
-            live_voice_data=mic_recorder(
-                start_prompt="Start Recording",
-                stop_prompt="Stop Recording",
-                key="live_recorder"
-            )
-
-            if live_voice_data and "bytes" in live_voice_data:
-
-                st.session_state.live_voice_audio_bytes=live_voice_data[
-                    "bytes"
-                ]
-
-                st.success(
-                    "Live voice recorded ✅"
-                )
-
-                live_text=speech_to_text(
-                    st.session_state.live_voice_audio_bytes,
-                    speech_languages[
-                        current_speaker_language
-                    ]
-                )
-
-                if live_text:
-
-                    st.session_state.live_detected_speech=live_text
-                    st.session_state.live_detected_label=detected_label
-
-                else:
-
-                    st.warning(
-                        "Could not recognize live speech. Try speaking closer to the mic."
-                    )
-
-            if st.session_state.live_detected_speech:
-
-                st.success(
-                    "✅ Speech captured"
-                )
-
-                with st.expander(
-                    "View detected speech",
-                    expanded=False
-                ):
-
-                    st.write(
-                        f"**{st.session_state.live_detected_label}:** "
-                        f"{st.session_state.live_detected_speech}"
-                    )
-
-            if st.button(
-                release_button_label,
-                key="release_to_translate_live",
-                use_container_width=True
-            ):
-
-                if st.session_state.live_detected_speech:
-
-                    try:
-
-                        translated=GoogleTranslator(
-                            source="auto",
-                            target=languages[
-                                current_target_language
-                            ]
-                        ).translate(
-                            st.session_state.live_detected_speech
-                        )
-
-                        st.session_state.live_translated_text=translated
-                        st.session_state.live_translated_label=translated_label
-
-                        st.session_state.live_target_lang_code=languages[
-                            current_target_language
-                        ]
-
-                        tts=gTTS(
-                            text=st.session_state.live_translated_text,
-                            lang=st.session_state.live_target_lang_code
-                        )
-
-                        tts.save(
-                            "live_translation.mp3"
-                        )
-
-                        with open(
-                            "live_translation.mp3",
-                            "rb"
-                        ) as file:
-
-                            st.session_state.live_translation_audio=file.read()
-
-                        if st.session_state.live_current_turn=="you":
-
-                            st.session_state.live_current_turn="they"
-
-                        else:
-
-                            st.session_state.live_current_turn="you"
-
-                    except Exception as e:
-
-                        st.error(
-                            f"Live translation failed: {e}"
-                        )
-
-                else:
-
-                    st.warning(
-                        "Please record speech before translating."
-                    )
-
-                st.session_state.live_talk_active=False
-
-                st.rerun()
-
-        if st.session_state.live_translated_text:
-
-            st.success(
-                "🔊 Translation played"
-            )
-
-            with st.expander(
-                "View last transcript",
-                expanded=False
-            ):
-
-                st.write(
-                    f"**{st.session_state.live_detected_label}:** "
-                    f"{st.session_state.live_detected_speech}"
-                )
-
-                st.write(
-                    f"**{st.session_state.live_translated_label}:** "
-                    f"{st.session_state.live_translated_text}"
-                )
-
-        if st.session_state.live_translation_audio:
-
-            st.audio(
-                st.session_state.live_translation_audio,
-                format="audio/mp3",
-                autoplay=True
-            )
-
-        if st.button(
-            "🔴 End Call",
-            key="end_live_call",
-            use_container_width=True
-        ):
-
-            if st.session_state.call_started_at:
-
-                call_ended_at=datetime.now()
-
-                call_duration=call_ended_at-st.session_state.call_started_at
-
-                duration_seconds=int(
-                    call_duration.total_seconds()
-                )
-
-                st.session_state.recent_calls.insert(
-                    0,
-                    {
-                        "contact":st.session_state.session_contact,
-                        "you_speak":st.session_state.session_speaking_language,
-                        "they_speak":st.session_state.session_hearing_language,
-                        "duration_seconds":duration_seconds,
-                        "ended_at":call_ended_at.strftime(
-                            "%d %b %Y, %I:%M %p"
-                        )
-                    }
-                )
-
-                save_json_file(
-                    RECENT_CALLS_FILE,
-                    st.session_state.recent_calls
-                )
-
-            st.session_state.live_session_active=False
-            st.session_state.live_talk_active=False
-
-            st.session_state.session_speaking_language=""
-            st.session_state.session_hearing_language=""
-            st.session_state.session_contact=""
-            st.session_state.call_started_at=None
-
-            st.session_state.live_detected_speech=""
-            st.session_state.live_translated_text=""
-            st.session_state.live_voice_audio_bytes=None
-            st.session_state.live_translation_audio=None
-            st.session_state.live_detected_label=""
-            st.session_state.live_translated_label=""
-            st.session_state.live_current_turn="you"
-
-            st.rerun()               
+                  
 
 # ======================================================
 # TRANSLATION ASSISTANT MODE
@@ -1212,10 +770,18 @@ else:
         if st.button(
             "🎙 Convert Speech to Text"
         ):
+            try:
+                transcription = transcribe_audio_bytes(
+                    st.session_state.voice_audio_bytes,
+        "webm",
+        st.session_state.selected_language.lower()
+    )
 
-            speech_text=speech_to_text(
-                st.session_state.voice_audio_bytes
-            )
+                speech_text = transcription.text
+            except SpeechError:
+                speech_text = None
+
+            
 
             if speech_text:
 
@@ -1226,7 +792,7 @@ else:
             else:
 
                 st.warning(
-                    "Could not recognize speech. Try speaking closer to mic!"
+                    "Could not recognize speech. Try speaking closer to the microphone!"
                 )
 
 
@@ -1295,11 +861,9 @@ else:
 
         code=None
 
-        for k,v in language_names.items():
-
-            if v==detected:
-
-                code=k
+        code = detect_language_key(
+    st.session_state.text_input_value
+)
 
         if code and code in reverse_languages:
 
@@ -1321,140 +885,89 @@ else:
 
 
     if st.button(
-        "Translate"
-    ):
-
-        if st.session_state.text_input_value.strip()=="":
-
+    "Translate"
+):
+        if st.session_state.text_input_value.strip() == "":
             st.warning(
-                "Please enter text"
-            )
+            "Please enter text."
+        )
 
         else:
+            try:
+                result = translate_text(
+        text=st.session_state.text_input_value,
+        target_language_key=selected_language.lower(),
+    )
 
-            translated=GoogleTranslator(
+                st.session_state.translated = result.translated_text
+                st.session_state.detected_language = result.source_language_key
+                st.session_state.selected_lang_code = (
+        get_language(result.target_language_key).tts_code
+    )
 
-                source="auto",
-
-                target=languages[
-                    selected_language
-                ]
-
-            ).translate(
-                user_text
-            )
-
-            detected_code,_=(
-
-                langid.classify(
-                    user_text
-                )
-
-            )
-
-            st.session_state.detected_language=(
-
-                language_names.get(
-                    detected_code,
-                    "Unknown"
-                )
-
-            )
-
-            st.session_state.translated=translated
-
-            st.session_state.selected_lang_code=(
-
-                languages[
-                    selected_language
-                ]
-
-            )
+            except TranslationError as exc:
+                st.error(str(exc))
+                st.stop()
 
             st.session_state.history.append({
 
-                "original":user_text,
-                "translated":translated,
-                "language":selected_language,
-                "time":datetime.now().strftime(
-                    "%H:%M:%S"
-                )
+            "original":
+            st.session_state.text_input_value,
 
-            })
+            "translated":
+            result.translated_text,
 
+            "language":
+            selected_language,
 
-    if st.session_state.translated:
+            "time":
+            datetime.now().strftime(
+                "%H:%M:%S"
+            )
 
-        st.markdown(
-
-f"🌐 Detected Language: {st.session_state.detected_language}"
-
-        )
-
-        tts=gTTS(
-
-            text=st.session_state.translated,
-
-            lang=st.session_state.selected_lang_code
-
-        )
-
-        tts.save(
-            "translation.mp3"
-        )
-
-        with open(
-
-            "translation.mp3",
-
-            "rb"
-
-        ) as file:
-
-            audio_bytes=file.read()
-
-        
+        })
             
-            col1,col2,col3=st.columns(
-            [8,1,1]
+        if st.session_state.translated:
+
+            st.markdown(
+
+        f"🌐 Detected Language: {st.session_state.detected_language}"
+
+    )
+            col1, col2, col3 = st.columns(
+        [8, 1, 1]
+    )
+
+            with col1:
+                st.success(
+            st.session_state.translated
         )
 
-        with col1:
+            with col2:
+                if st.session_state.voice_audio_bytes:
+                    st.audio(
+            st.session_state.voice_audio_bytes,
+            format="audio/mp3"
+        )
 
-            st.success(
-                st.session_state.translated
-            )
+            with col3:
 
-        with col2:
+                if st.button(
 
-            st.audio(
+            "📋",
 
-                audio_bytes,
+            key="copy_translation",
 
-                format="audio/mp3"
+            help="Copy"
 
-            )
-
-        with col3:
-
-            if st.button(
-
-                "📋",
-
-                key="copy_translation",
-                help="Copy"
-
-            ):
-
-                pyperclip.copy(
-                    st.session_state.translated
-                )
-
+        ):
+                    pyperclip.copy(
+    st.session_state.translated
+)
+                   
                 st.toast(
-                    "Copied ✅"
-                )
-
-
+                "Copied ✅"
+            )
     # ---------------- TRANSLATION HISTORY ----------------
 
     if st.session_state.history:
