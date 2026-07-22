@@ -3,27 +3,27 @@ translator.py
 
 Framework-independent translation service for LinguaLive.
 
-Responsibilities:
-- Detect the language of a piece of text.
-- Translate text between any two languages in the config language
-  registry.
-- Present a single, stable interface (`translate_text`,
-  `detect_language_key`, `translate_for_call`) so that swapping the
-  underlying provider later (e.g. moving from Google Translate to a
-  dedicated live-voice translation API) only requires changes inside
-  this file.
+Architecture:
+    TranslationProvider (ABC)
+        - Defines the contract any translation backend must satisfy.
+    GoogleTranslateProvider
+        - Current implementation using Google Translate.
+    TranslationService
+        - Public API used everywhere else in LinguaLive.
 
-Current provider: Google Translate, via the `deep-translator` package.
-Language detection uses `langdetect`, a local heuristic detector, so
-LinguaLive never needs a separate detection API key.
-
-No Streamlit import. No st.session_state. Pure service layer.
+No Streamlit.
+No session state.
+Pure business logic.
 """
 
 from __future__ import annotations
 
+import logging
+
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Optional
+from functools import lru_cache
+from typing import Dict, List, Optional
 
 from deep_translator import GoogleTranslator
 from deep_translator.exceptions import (
@@ -32,75 +32,524 @@ from deep_translator.exceptions import (
     RequestError,
     TranslationNotFound,
 )
-from langdetect import DetectorFactory, LangDetectException, detect
 
-from config import SUPPORTED_LANGUAGES, get_language
+from langdetect import (
+    DetectorFactory,
+    LangDetectException,
+    detect,
+)
 
-# langdetect's detector is non-deterministic by default (it samples n-grams
-# probabilistically). Seeding it makes repeated detections of the same text
-# stable, which matters for a live call where the same phrase may be
-# re-processed.
+from config import (
+    SUPPORTED_LANGUAGES,
+    get_language,
+)
+
+logger = logging.getLogger(__name__)
+
 DetectorFactory.seed = 0
 
+AUTO_DETECT_SOURCE = "auto"
 
-class TranslationError(RuntimeError):
-    """Raised when translation or language detection fails unrecoverably."""
+
+class TranslatorError(RuntimeError):
+    """Raised when translation fails."""
+
+
+# Backward compatibility
+TranslationError = TranslatorError
 
 
 @dataclass(frozen=True)
 class TranslationResult:
     """
-    The outcome of a single translation pass. Consumed by live_call.py
-    (to drive the on-screen transcript) and by the Translation
-    Assistant page (to render source/target text and history).
+    Result returned after a successful translation.
     """
 
     original_text: str
+
     translated_text: str
+
     source_language_key: str
+
     target_language_key: str
 
-
-# Reverse lookup: Google Translate / langdetect ISO code -> our internal
-# language key (e.g. "zh-cn" -> "chinese"). Built once at import time from
-# the single source of truth in config.py so this module can never drift
-# out of sync with the language registry.
-_CODE_TO_KEY: Dict[str, str] = {
-    lang.translate_code.lower(): key for key, lang in SUPPORTED_LANGUAGES.items()
-}
+    detected_language_name: str
 
 
-def detect_language_key(text: str) -> Optional[str]:
+class TranslationProvider(ABC):
     """
-    Detect the language of `text` and return the matching internal
-    language key (e.g. "tamil"), or None if detection fails or the
-    detected language isn't one LinguaLive supports.
-
-    Returns None instead of raising on failure because detection is
-    routinely run on short, ambiguous utterances during a live call;
-    the caller (live_call.py) is expected to fall back to the
-    speaker's configured language when this returns None.
+    Base class for all translation providers.
     """
-    cleaned = text.strip()
-    if not cleaned:
+
+    @abstractmethod
+    def detect(
+        self,
+        text: str,
+    ) -> Optional[str]:
+        pass
+
+    @abstractmethod
+    def translate(
+        self,
+        text: str,
+        source_code: str,
+        target_code: str,
+    ) -> str:
+        pass
+
+
+class GoogleTranslateProvider(
+    TranslationProvider
+):
+    """
+    Google Translate implementation.
+    """
+
+    @lru_cache(maxsize=256)
+    def detect(
+        self,
+        text: str,
+    ) -> Optional[str]:
+
+        cleaned = text.strip()
+
+        if len(cleaned) < 2:
+            return None
+
+        try:
+            return detect(cleaned).lower()
+
+        except LangDetectException as exc:
+
+            logger.debug(
+                "Language detection failed: %s",
+                exc,
+            )
+
+            return None
+
+    def translate(
+        self,
+        text: str,
+        source_code: str,
+        target_code: str,
+    ) -> str:
+
+        try:
+
+            translated = GoogleTranslator(
+                source=source_code,
+                target=target_code,
+            ).translate(
+                text
+            )
+
+        except (
+            LanguageNotSupportedException,
+            NotValidPayload,
+            RequestError,
+            TranslationNotFound,
+        ) as exc:
+
+            raise TranslatorError(
+                f"Translation failed: {exc}"
+            ) from exc
+
+        except Exception as exc:
+
+            raise TranslatorError(
+                f"Unexpected translation error: {exc}"
+            ) from exc
+
+        if translated is None:
+
+            raise TranslatorError(
+                "Translation provider returned None."
+            )
+
+        translated = translated.strip()
+
+        if not translated:
+
+            raise TranslatorError(
+                "Translation provider returned an empty result."
+            )
+
+        return translated
+
+
+class TranslationService:
+    """
+    Main translation service.
+
+    Every UI component, Live Call,
+    Translation Assistant,
+    FastAPI endpoint,
+    or future Flutter application
+    should use THIS class.
+    """
+
+    def __init__(
+        self,
+        provider: Optional[
+            TranslationProvider
+        ] = None,
+    ):
+
+        self._provider = (
+            provider
+            or GoogleTranslateProvider()
+        )
+
+        self._code_to_key: Dict[
+            str,
+            str,
+        ] = {
+
+            language.translate_code.lower(): key
+
+            for key, language in SUPPORTED_LANGUAGES.items()
+
+        }
+
+    def _resolve_detected_code(
+        self,
+        code: str,
+    ) -> Optional[str]:
+
+        normalized = code.lower()
+
+        if normalized in self._code_to_key:
+
+            return self._code_to_key[
+                normalized
+            ]
+
+        base = normalized.split("-")[0]
+
+        for provider_code, key in self._code_to_key.items():
+
+            if provider_code.split("-")[0] == base:
+
+                return key
+
         return None
 
-    try:
-        detected_code = detect(cleaned).lower()
-    except LangDetectException:
-        return None
+    def detect_language_key(
+        self,
+        text: str,
+    ) -> Optional[str]:
 
-    if detected_code in _CODE_TO_KEY:
-        return _CODE_TO_KEY[detected_code]
+        cleaned = text.strip()
 
-    # langdetect sometimes returns a region-qualified code (e.g. "zh-tw")
-    # that isn't an exact match. Fall back to a base-code match.
-    base_code = detected_code.split("-")[0]
-    for code, key in _CODE_TO_KEY.items():
-        if code.split("-")[0] == base_code:
-            return key
+        if not cleaned:
 
-    return None
+            return None
+
+        detected = self._provider.detect(
+            cleaned
+        )
+
+        if detected is None:
+
+            return None
+
+        return self._resolve_detected_code(
+            detected
+        )
+    def translate(
+        self,
+        text: str,
+        target_language_key: str,
+        source_language_key: Optional[str] = None,
+    ) -> TranslationResult:
+        """
+        Translate text into the requested target language.
+
+        If source_language_key is omitted,
+        language is detected automatically.
+        """
+
+        cleaned = text.strip()
+
+        if not cleaned:
+            raise TranslatorError(
+                "Cannot translate empty text."
+            )
+
+        try:
+            target_language = get_language(
+                target_language_key
+            )
+
+        except ValueError as exc:
+
+            raise TranslatorError(
+                str(exc)
+            ) from exc
+
+        # ---------------------------------------
+        # Determine source language
+        # ---------------------------------------
+
+        if source_language_key is None:
+
+            detected_key = self.detect_language_key(
+                cleaned
+            )
+
+            if detected_key is None:
+
+                raise TranslatorError(
+                    "Unable to detect source language."
+                )
+
+            source_language_key = detected_key
+
+            source_code = AUTO_DETECT_SOURCE
+
+        else:
+
+            try:
+
+                source_language = get_language(
+                    source_language_key
+                )
+
+            except ValueError as exc:
+
+                raise TranslatorError(
+                    str(exc)
+                ) from exc
+
+            source_code = (
+                source_language.translate_code
+            )
+
+        # ---------------------------------------
+        # Prevent unnecessary translation
+        # ---------------------------------------
+
+        if source_language_key == target_language_key:
+
+            return TranslationResult(
+
+                original_text=cleaned,
+
+                translated_text=cleaned,
+
+                source_language_key=source_language_key,
+
+                target_language_key=target_language_key,
+
+                detected_language_name=get_language(
+                    source_language_key
+                ).display_name,
+            )
+
+        translated = self._provider.translate(
+
+            cleaned,
+
+            source_code,
+
+            target_language.translate_code,
+
+        )
+
+        return TranslationResult(
+
+            original_text=cleaned,
+
+            translated_text=translated,
+
+            source_language_key=source_language_key,
+
+            target_language_key=target_language_key,
+
+            detected_language_name=get_language(
+                source_language_key
+            ).display_name,
+        )
+
+    def translate_batch(
+        self,
+        texts: List[str],
+        target_language_key: str,
+        source_language_key: Optional[str] = None,
+    ) -> List[TranslationResult]:
+
+        if not texts:
+
+            raise TranslatorError(
+                "Cannot batch translate an empty list."
+            )
+
+        results: List[
+            TranslationResult
+        ] = []
+
+        for index, text in enumerate(texts):
+
+            try:
+
+                results.append(
+
+                    self.translate(
+
+                        text=text,
+
+                        target_language_key=target_language_key,
+
+                        source_language_key=source_language_key,
+
+                    )
+
+                )
+
+            except TranslatorError as exc:
+
+                raise TranslatorError(
+
+                    f"Batch translation failed at index {index}: {exc}"
+
+                ) from exc
+
+        return results
+
+    def translate_for_call(
+        self,
+        text: str,
+        speaker_language_key: str,
+        listener_language_key: str,
+    ) -> TranslationResult:
+        """
+        Translation used during a live call.
+
+        The speaker language is already known,
+        therefore no detection is performed.
+        """
+
+        cleaned = text.strip()
+
+        if not cleaned:
+
+            raise TranslatorError(
+                "Cannot translate empty text."
+            )
+
+        if speaker_language_key == listener_language_key:
+
+            return TranslationResult(
+
+                original_text=cleaned,
+
+                translated_text=cleaned,
+
+                source_language_key=speaker_language_key,
+
+                target_language_key=listener_language_key,
+
+                detected_language_name=get_language(
+                    speaker_language_key
+                ).display_name,
+            )
+
+        return self.translate(
+
+            text=cleaned,
+
+            target_language_key=listener_language_key,
+
+            source_language_key=speaker_language_key,
+
+        )
+
+    def translate_assistant(
+        self,
+        text: str,
+        target_language_key: str,
+    ) -> TranslationResult:
+        """
+        Translation Assistant workflow.
+
+        1. Detect language.
+        2. Show detected language.
+        3. Translate only if needed.
+        """
+
+        cleaned = text.strip()
+
+        if not cleaned:
+
+            raise TranslatorError(
+                "Cannot translate empty text."
+            )
+
+        detected = self.detect_language_key(
+            cleaned
+        )
+
+        if detected is None:
+
+            raise TranslatorError(
+                "Unable to detect source language."
+            )
+
+        if detected == target_language_key:
+
+            return TranslationResult(
+
+                original_text=cleaned,
+
+                translated_text=cleaned,
+
+                source_language_key=detected,
+
+                target_language_key=target_language_key,
+
+                detected_language_name=get_language(
+                    detected
+                ).display_name,
+            )
+
+        return self.translate(
+
+            text=cleaned,
+
+            target_language_key=target_language_key,
+
+            source_language_key=detected,
+
+        )
+# ---------------------------------------------------------------------
+# Default Translation Service
+# ---------------------------------------------------------------------
+
+_default_service = TranslationService()
+
+
+# ---------------------------------------------------------------------
+# Module-level Convenience Functions
+#
+# These preserve the original API so existing modules
+# (live_call.py, app.py, etc.) continue to work without
+# constructing TranslationService manually.
+# ---------------------------------------------------------------------
+
+
+def detect_language_key(
+    text: str,
+) -> Optional[str]:
+    """
+    Detect the language of a piece of text.
+
+    Returns the LinguaLive language key,
+    or None if detection fails.
+    """
+    return _default_service.detect_language_key(
+        text
+    )
 
 
 def translate_text(
@@ -109,60 +558,27 @@ def translate_text(
     source_language_key: Optional[str] = None,
 ) -> TranslationResult:
     """
-    Translate `text` into the language identified by
-    `target_language_key`.
-
-    If `source_language_key` is omitted, the source language is
-    auto-detected by the translation provider. Passing it explicitly
-    (e.g. from the speaker's profile during a live call) is faster and
-    more reliable than relying on auto-detection for short utterances.
-
-    Raises TranslationError on any failure (unsupported language,
-    network/provider error, or empty translation result) so callers
-    can show a single, consistent error state instead of handling
-    several exception types individually.
+    Generic translation wrapper.
     """
-    cleaned = text.strip()
-    if not cleaned:
-        raise TranslationError("Cannot translate empty text.")
-
-    try:
-        target_lang = get_language(target_language_key)
-    except ValueError as exc:
-        raise TranslationError(str(exc)) from exc
-
-    if source_language_key is None:
-        source_code = "auto"
-        resolved_source_key = detect_language_key(cleaned) or "unknown"
-    else:
-        try:
-            source_lang = get_language(source_language_key)
-        except ValueError as exc:
-            raise TranslationError(str(exc)) from exc
-        source_code = source_lang.translate_code
-        resolved_source_key = source_language_key
-
-    try:
-        translator = GoogleTranslator(source=source_code, target=target_lang.translate_code)
-        translated_text = translator.translate(cleaned)
-    except (
-        LanguageNotSupportedException,
-        NotValidPayload,
-        RequestError,
-        TranslationNotFound,
-    ) as exc:
-        raise TranslationError(f"Translation failed: {exc}") from exc
-    except Exception as exc:  # noqa: BLE001 - provider errors are not exhaustively typed
-        raise TranslationError(f"Unexpected translation error: {exc}") from exc
-
-    if not translated_text or not translated_text.strip():
-        raise TranslationError("Translation provider returned an empty result.")
-
-    return TranslationResult(
-        original_text=cleaned,
-        translated_text=translated_text.strip(),
-        source_language_key=resolved_source_key,
+    return _default_service.translate(
+        text=text,
         target_language_key=target_language_key,
+        source_language_key=source_language_key,
+    )
+
+
+def translate_batch(
+    texts: List[str],
+    target_language_key: str,
+    source_language_key: Optional[str] = None,
+) -> List[TranslationResult]:
+    """
+    Batch translation wrapper.
+    """
+    return _default_service.translate_batch(
+        texts=texts,
+        target_language_key=target_language_key,
+        source_language_key=source_language_key,
     )
 
 
@@ -172,25 +588,24 @@ def translate_for_call(
     listener_language_key: str,
 ) -> TranslationResult:
     """
-    Convenience wrapper used by live_call.py: translates one speaker's
-    utterance into the other participant's language. The speaker's
-    language is known from the call session (not auto-detected), which
-    keeps the live-call pipeline fast and avoids misdetection on short
-    phrases.
-
-    If the speaker and listener use the same language, the text is
-    returned unchanged rather than round-tripped through the provider.
+    Live Call translation wrapper.
     """
-    if speaker_language_key == listener_language_key:
-        return TranslationResult(
-            original_text=text.strip(),
-            translated_text=text.strip(),
-            source_language_key=speaker_language_key,
-            target_language_key=listener_language_key,
-        )
-
-    return translate_text(
+    return _default_service.translate_for_call(
         text=text,
-        target_language_key=listener_language_key,
-        source_language_key=speaker_language_key,
+        speaker_language_key=speaker_language_key,
+        listener_language_key=listener_language_key,
     )
+
+
+def translate_assistant(
+    text: str,
+    target_language_key: str,
+) -> TranslationResult:
+    """
+    Translation Assistant wrapper.
+    """
+    return _default_service.translate_assistant(
+        text=text,
+        target_language_key=target_language_key,
+    )   
+    

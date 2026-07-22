@@ -13,8 +13,6 @@ from translator import (
 from streamlit_mic_recorder import mic_recorder
 from datetime import datetime
 
-import os
-import json
 
 from config import (
     settings,
@@ -41,9 +39,6 @@ from speech import (
     synthesize_speech_bytes,
     SpeechError
 )
-
-
-
 
 # ---------------- PAGE CONFIG ----------------
 
