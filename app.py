@@ -939,11 +939,18 @@ else:
         )
 
             with col2:
-                if st.session_state.voice_audio_bytes:
-                    st.audio(
-            st.session_state.voice_audio_bytes,
-            format="audio/mp3"
+                try:
+                    audio_bytes = synthesize_speech_bytes(
+            st.session_state.translated,
+            result.target_language_key,
         )
+                    st.audio(
+            audio_bytes,
+            format="audio/mp3",
+        )
+
+                except SpeechError as exc:
+                    st.warning(str(exc))
 
             with col3:
 

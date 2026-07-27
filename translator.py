@@ -293,20 +293,14 @@ class TranslationService:
         # ---------------------------------------
 
         if source_language_key is None:
-
             detected_key = self.detect_language_key(
-                cleaned
-            )
-
-            if detected_key is None:
-
-                raise TranslatorError(
-                    "Unable to detect source language."
-                )
-
-            source_language_key = detected_key
-
+        cleaned
+    )
             source_code = AUTO_DETECT_SOURCE
+            if detected_key is None:
+                source_language_key = "unknown"
+            else:
+                source_language_key = detected_key
 
         else:
 
